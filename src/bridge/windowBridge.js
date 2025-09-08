@@ -102,7 +102,26 @@ class WindowBridge extends EventEmitter {
                 throw new Error(`Window '${name}' not found or destroyed`);
             }
 
+            // Handle toggle behavior
+            if (visible === undefined) {
+                // Toggle the window
+                visible = !window.isVisible();
+            }
+
             if (visible) {
+                // Close other child windows when opening a new one (except header)
+                if (name !== 'header') {
+                    const childWindows = ['listen', 'ask', 'settings'];
+                    for (const winName of childWindows) {
+                        if (winName !== name) {
+                            const otherWindow = this.windowPool.get(winName);
+                            if (otherWindow && !otherWindow.isDestroyed() && otherWindow.isVisible()) {
+                                console.log(`[WindowBridge] Closing ${winName} window`);
+                                await this.hideWindow(winName, {});
+                            }
+                        }
+                    }
+                }
                 await this.showWindow(name, options);
             } else {
                 await this.hideWindow(name, options);

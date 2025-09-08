@@ -62,7 +62,21 @@ function updateChildWindowLayouts(animated = true) {
         ? headerWindow.getBounds() : null;
 
     const newLayout = layoutManager.calculateFeatureWindowLayout(visibleWindows, headerBounds);
-    movementManager.animateLayout(newLayout, animated);
+    
+    // Apply new positions to windows
+    Object.keys(newLayout).forEach(windowName => {
+        const window = windowPool.get(windowName);
+        if (window && !window.isDestroyed()) {
+            const layout = newLayout[windowName];
+            if (animated && movementManager) {
+                // Use smooth movement if available
+                movementManager.moveWindow(window, layout);
+            } else {
+                // Direct positioning
+                window.setBounds(layout);
+            }
+        }
+    });
 }
 
 const showSettingsWindow = () => {

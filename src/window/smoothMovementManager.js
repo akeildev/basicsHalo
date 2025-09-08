@@ -110,6 +110,17 @@ class SmoothMovementManager {
             animate();
         });
     }
+
+    // Simple move window method for repositioning
+    moveWindow(window, targetBounds) {
+        if (!window || window.isDestroyed()) {
+            return;
+        }
+        
+        // For now, just set bounds directly
+        // Could add smooth animation later if needed
+        window.setBounds(targetBounds);
+    }
 }
 
 module.exports = SmoothMovementManager;
