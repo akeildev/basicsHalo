@@ -39,8 +39,6 @@ let settingsHideTimer = null;
 let layoutManager = null;
 let movementManager = null;
 
-let layoutDebounceTimer = null;
-
 function updateChildWindowLayouts(animated = true) {
     // if (movementManager.isAnimating) return;
 
@@ -189,12 +187,7 @@ async function createHeaderWindow() {
     
     // Track header movement to reflow child windows
     headerWindow.on('moved', () => {
-        if (!layoutDebounceTimer) {
-            layoutDebounceTimer = setTimeout(() => {
-                updateChildWindowLayouts(false);
-                layoutDebounceTimer = null;
-            }, 100);
-        }
+        updateChildWindowLayouts(false);
     });
     
     // Cleanup on close
