@@ -40,7 +40,7 @@ class HeaderWindow {
         if (this.listenBtn) {
             this.listenBtn.addEventListener('click', () => {
                 console.log('[Header] Listen button clicked!');
-                this.toggleListening();
+                this.openListenWindow();
             });
             console.log('[Header] Listen button event listener added');
         } else {
@@ -154,6 +154,25 @@ class HeaderWindow {
         } catch (error) {
             console.error('[Header] Error stopping listening:', error);
             this.showError('Failed to stop listening: ' + error.message);
+        }
+    }
+
+    async openListenWindow() {
+        console.log('[Header] Opening Listen window...');
+        try {
+            if (!window.electronAPI) {
+                throw new Error('electronAPI not available');
+            }
+            const result = await window.electronAPI.requestWindowVisibility({ name: 'listen', visible: true });
+            console.log('[Header] Listen window result:', result);
+            if (!result?.success) {
+                this.showError('Failed to open Listen window: ' + (result?.error || 'Unknown error'));
+            } else {
+                console.log('[Header] Listen window opened successfully');
+            }
+        } catch (error) {
+            console.error('[Header] Error opening Listen window:', error);
+            this.showError('Failed to open Listen window: ' + error.message);
         }
     }
 
