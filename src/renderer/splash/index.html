@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" 
+          content="default-src 'self';
+                   img-src 'self' data:;
+                   media-src 'self';
+                   script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline';
+                   style-src 'self' 'unsafe-inline';
+                   connect-src 'self';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halo - Welcome</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- GSAP from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+</head>
+<body>
+    <!-- Draggable area for frameless window -->
+    <div class="drag-bar"></div>
+    
+    <!-- Background video (optional - you can add intro.mp4) -->
+    <video class="bg-video" autoplay muted playsinline loop>
+        <!-- <source src="../assets/intro.mp4" type="video/mp4"> -->
+    </video>
+    
+    <!-- Dark overlay for better text visibility -->
+    <div class="scrim"></div>
+    
+    <!-- Halo logo -->
+    <div class="halo-logo">
+        <img class="logo-img light-logo" src="../assets/haloLogoDark.png" alt="Halo">
+        <img class="logo-img dark-logo" src="../assets/haloLogoWhite.png" alt="Halo">
+    </div>
+    
+    <!-- Welcome words animation container -->
+    <div data-loading-container class="loading-container">
+        <div class="loading-screen">
+            <div data-loading-words=" Aprende, Lerne, Impara, 学习, تعلم, Together"
+                 class="loading-words">
+                <div class="loading-words__dot"></div>
+                <p data-loading-words-target class="loading-words__word">Learn</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Next button (hidden initially) -->
+    <button id="nextBtn" class="next-btn" aria-label="Continue">
+        <span>Get Started</span>
+        <svg class="arrow-icon" viewBox="0 0 24 24" width="20" height="20">
+            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+        </svg>
+    </button>
+    
+    <!-- Audio for startup sound -->
+    <audio id="startupSound" preload="auto">
+        <source src="../assets/haloSound.mp3" type="audio/mpeg">
+    </audio>
+    
+    <script src="splash.js"></script>
+</body>
+</html>

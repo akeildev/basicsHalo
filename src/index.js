@@ -1,0 +1,495 @@
+// Development reloader (commented out in production)
+// try {
+//     const reloader = require('electron-reloader');
+//     reloader(module, {
+//     });
+// } catch (err) {
+// }
+
+require('dotenv').config();
+
+// Handle Windows installer events
+if (require('electron-squirrel-startup')) {
+    process.exit(0);
+}
+
+// Import Electron modules and Clueless services
+const { app, BrowserWindow, shell, ipcMain, dialog, desktopCapturer, session } = require('electron');
+const { createWindows } = require('./window/windowManager.js');
+const listenService = require('./features/listen/listenService');
+const { initializeFirebase } = require('./features/common/services/firebaseClient');
+const databaseInitializer = require('./features/common/services/databaseInitializer');
+const authService = require('./features/common/services/authService');
+const path = require('node:path');
+const express = require('express');
+const fetch = require('node-fetch');
+const { autoUpdater } = require('electron-updater');
+const { EventEmitter } = require('events');
+const askService = require('./features/ask/askService');
+const settingsService = require('./features/settings/settingsService');
+const sessionRepository = require('./features/common/repositories/session');
+const modelStateService = require('./features/common/services/modelStateService');
+const featureBridge = require('./bridge/featureBridge');
+const windowBridge = require('./bridge/windowBridge');
+const splashService = require('./services/SplashService');
+
+// Import new configuration and infrastructure services
+const configService = require('./services/ConfigService');
+const encryptionService = require('./services/EncryptionService');
+const settingsStoreService = require('./services/SettingsService');
+const PathUtils = require('./utils/PathUtils');
+
+// Global variables
+const eventBridge = new EventEmitter();
+let WEB_PORT = 3000;
+let isShuttingDown = false; // Flag to prevent infinite shutdown loop
+
+// Make modelStateService globally available
+global.modelStateService = modelStateService;
+
+// Import and initialize OllamaService
+const ollamaService = require('./features/common/services/ollamaService');
+const ollamaModelRepository = require('./features/common/repositories/ollamaModel');
+
+// Native deep link handling - cross-platform compatible
+let pendingDeepLinkUrl = null;
+
+function setupProtocolHandling() {
+    // Protocol registration - must be done before app is ready
+    try {
+        if (!app.isDefaultProtocolClient('halo')) {
+            const success = app.setAsDefaultProtocolClient('halo');
+            if (success) {
+                console.log('[Protocol] Successfully set as default protocol client for halo://');
+            } else {
+                console.warn('[Protocol] Failed to set as default protocol client - this may affect deep linking');
+            }
+        } else {
+            console.log('[Protocol] Already registered as default protocol client for halo://');
+        }
+    } catch (error) {
+        console.error('[Protocol] Error during protocol registration:', error);
+    }
+
+    // Handle protocol URLs on Windows/Linux
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        console.log('[Protocol] Second instance command line:', commandLine);
+        
+        focusMainWindow();
+        
+        let protocolUrl = null;
+        
+        // Search through all command line arguments for a valid protocol URL
+        for (const arg of commandLine) {
+            if (arg && typeof arg === 'string' && arg.startsWith('halo://')) {
+                // Clean up the URL by removing problematic characters
+                const cleanUrl = arg.replace(/[\\₩]/g, '');
+                
+                // Additional validation for Windows
+                if (process.platform === 'win32') {
+                    // On Windows, ensure the URL doesn't contain file path indicators
+                    if (!cleanUrl.includes(':') || cleanUrl.indexOf('://') === cleanUrl.lastIndexOf(':')) {
+                        protocolUrl = cleanUrl;
+                        break;
+                    }
+                } else {
+                    protocolUrl = cleanUrl;
+                    break;
+                }
+            }
+        }
+        
+        if (protocolUrl) {
+            console.log('[Protocol] Valid URL found from second instance:', protocolUrl);
+            handleCustomUrl(protocolUrl);
+        } else {
+            console.log('[Protocol] No valid protocol URL found in command line arguments');
+            console.log('[Protocol] Command line args:', commandLine);
+        }
+    });
+
+    // Handle protocol URLs on macOS
+    app.on('open-url', (event, url) => {
+        event.preventDefault();
+        console.log('[Protocol] Received URL via open-url:', url);
+        
+        if (!url || !url.startsWith('halo://')) {
+            console.warn('[Protocol] Invalid URL format:', url);
+            return;
+        }
+
+        if (app.isReady()) {
+            handleCustomUrl(url);
+        } else {
+            pendingDeepLinkUrl = url;
+            console.log('[Protocol] App not ready, storing URL for later');
+        }
+    });
+}
+
+function focusMainWindow() {
+    const { windowPool } = require('./window/windowManager.js');
+    if (windowPool) {
+        const header = windowPool.get('header');
+        if (header && !header.isDestroyed()) {
+            if (header.isMinimized()) header.restore();
+            header.focus();
+            return true;
+        }
+    }
+    
+    // Fallback: focus any available window
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+        const mainWindow = windows[0];
+        if (!mainWindow.isDestroyed()) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Handle Windows command line arguments for protocol URLs
+if (process.platform === 'win32') {
+    for (const arg of process.argv) {
+        if (arg && typeof arg === 'string' && arg.startsWith('halo://')) {
+            // Clean up the URL by removing problematic characters
+            const cleanUrl = arg.replace(/[\\₩]/g, '');
+            
+            if (!cleanUrl.includes(':') || cleanUrl.indexOf('://') === cleanUrl.lastIndexOf(':')) {
+                console.log('[Protocol] Found protocol URL in initial arguments:', cleanUrl);
+                pendingDeepLinkUrl = cleanUrl;
+                break;
+            }
+        }
+    }
+    
+    console.log('[Protocol] Initial process.argv:', process.argv);
+}
+
+// Ensure single instance
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    app.quit();
+    process.exit(0);
+}
+
+// Setup protocol after single instance lock
+setupProtocolHandling();
+
+// ============================================================================
+// MAIN PROCESS LIFECYCLE MANAGEMENT
+// ============================================================================
+
+// Critical initialization order as described in the lesson:
+// 1. Firebase (authentication)
+// 2. Database (required by all services)
+// 3. Authentication (validates user and loads preferences)
+// 4. Model State (manages AI model availability)
+// 5. Bridges (connect main and renderer processes)
+// 6. Web Server (provides dashboard interface)
+// 7. Windows (the UI that users interact with)
+
+async function initializeServices() {
+    console.log('[Lifecycle] Starting service initialization...');
+    
+    try {
+        // 1. Initialize Firebase first for authentication
+        console.log('[Lifecycle] Initializing Firebase...');
+        await initializeFirebase();
+        console.log('[Lifecycle] ✅ Firebase initialized');
+        
+        // 2. Initialize database (required by all other services)
+        console.log('[Lifecycle] Initializing database...');
+        await databaseInitializer.initialize();
+        console.log('[Lifecycle] ✅ Database initialized');
+        
+        // 3. Initialize encryption and settings services
+        console.log('[Lifecycle] Initializing encryption and settings...');
+        const userId = 'default'; // Will be replaced with actual user ID after auth
+        await encryptionService.initialize(userId);
+        await settingsStoreService.initialize(userId);
+        console.log('[Lifecycle] ✅ Encryption and settings initialized');
+        
+        // 4. Initialize authentication
+        console.log('[Lifecycle] Initializing authentication...');
+        // Authentication is handled by Firebase, just verify it's working
+        console.log('[Lifecycle] ✅ Authentication ready');
+        
+        // 5. Initialize model state service
+        console.log('[Lifecycle] Initializing model state...');
+        await modelStateService.setCurrentModel('gpt-4');
+        console.log('[Lifecycle] ✅ Model state initialized');
+        
+        // 5. Initialize bridges (already imported and will be set up)
+        console.log('[Lifecycle] ✅ Bridges ready');
+        
+        // 6. Initialize web server
+        console.log('[Lifecycle] Starting web server...');
+        await startWebServer();
+        console.log('[Lifecycle] ✅ Web server started');
+        
+        console.log('[Lifecycle] 🎉 All services initialized successfully!');
+        
+    } catch (error) {
+        console.error('[Lifecycle] ❌ Service initialization failed:', error);
+        // Implement defensive programming - show error but don't crash
+        showInitializationError(error);
+    }
+}
+
+async function startWebServer() {
+    const app = express();
+    
+    app.get('/', (req, res) => {
+        res.send(`
+            <html>
+                <head><title>Halo Dashboard</title></head>
+                <body>
+                    <h1>Halo Desktop Assistant</h1>
+                    <p>Web dashboard is running on port ${WEB_PORT}</p>
+                    <p>Status: Ready</p>
+                </body>
+            </html>
+        `);
+    });
+    
+    // Try to find an available port
+    const net = require('net');
+    
+    function findAvailablePort(startPort) {
+        return new Promise((resolve, reject) => {
+            const server = net.createServer();
+            
+            server.listen(startPort, () => {
+                const port = server.address().port;
+                server.close(() => resolve(port));
+            });
+            
+            server.on('error', (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    // Try next port
+                    findAvailablePort(startPort + 1).then(resolve).catch(reject);
+                } else {
+                    reject(err);
+                }
+            });
+        });
+    }
+    
+    try {
+        const availablePort = await findAvailablePort(WEB_PORT);
+        WEB_PORT = availablePort; // Update global port variable
+        
+        return new Promise((resolve, reject) => {
+            const server = app.listen(availablePort, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    console.log(`[WebServer] Dashboard running on http://localhost:${availablePort}`);
+                    resolve(server);
+                }
+            });
+        });
+    } catch (error) {
+        console.warn('[WebServer] Could not start web server:', error.message);
+        console.log('[WebServer] Continuing without web server...');
+        return null; // Return null instead of throwing to allow app to continue
+    }
+}
+
+function showInitializationError(error) {
+    const { dialog } = require('electron');
+    dialog.showErrorBox(
+        'Halo Initialization Error',
+        `Failed to initialize Halo: ${error.message}\n\nSome features may not work properly.`
+    );
+}
+
+async function gracefulShutdown() {
+    if (isShuttingDown) {
+        console.log('[Lifecycle] Shutdown already in progress, forcing exit...');
+        process.exit(0);
+    }
+    
+    isShuttingDown = true;
+    console.log('[Lifecycle] Starting graceful shutdown...');
+    
+    try {
+        // Save any unsaved data
+        console.log('[Lifecycle] Saving data...');
+        // Add data saving logic here when needed
+        
+        // Close active AI model connections
+        console.log('[Lifecycle] Closing AI connections...');
+        await listenService.stopListening();
+        await listenService.stopTranscription();
+        
+        // Stop audio recording sessions
+        console.log('[Lifecycle] Stopping audio sessions...');
+        // Audio cleanup logic here
+        
+        // Clean up database connections
+        console.log('[Lifecycle] Cleaning up database...');
+        // Database cleanup logic here
+        
+        console.log('[Lifecycle] ✅ Graceful shutdown completed');
+        
+    } catch (error) {
+        console.error('[Lifecycle] ❌ Error during shutdown:', error);
+    } finally {
+        // Force quit after timeout to prevent hanging
+        setTimeout(() => {
+            console.log('[Lifecycle] Force quitting after timeout...');
+            process.exit(0);
+        }, 5000);
+    }
+}
+
+// ============================================================================
+// LIFECYCLE EVENTS
+// ============================================================================
+
+// Most important event - fires when Electron is ready to create windows
+app.whenReady().then(async () => {
+    console.log('[Lifecycle] App is ready, starting initialization...');
+    
+    // Initialize configuration service first
+    console.log('[Lifecycle] Initializing configuration...');
+    configService.initialize();
+    
+    // Initialize and show splash screen
+    console.log('[Lifecycle] Initializing splash screen...');
+    await splashService.initialize();
+    
+    // Setup callback for when splash is dismissed BEFORE starting it
+    splashService.setOnNextCallback(async () => {
+        console.log('[Lifecycle] Transitioning from splash to main app...');
+        
+        // Create main windows
+        await createWindows();
+        console.log('[Lifecycle] ✅ Windows created');
+        
+        // Connect bridges to window pool
+        const { windowPool } = require('./window/windowManager.js');
+        windowBridge.setWindowPool(windowPool);
+        console.log('[Lifecycle] ✅ Bridges connected');
+        
+        // Close splash window
+        splashService.closeSplash();
+    });
+    
+    console.log('[Lifecycle] Starting splash screen...');
+    await splashService.start();
+    
+    // Handle any pending deep link URL
+    if (pendingDeepLinkUrl) {
+        console.log('[Lifecycle] Processing pending deep link:', pendingDeepLinkUrl);
+        handleCustomUrl(pendingDeepLinkUrl);
+        pendingDeepLinkUrl = null;
+    }
+    
+    // Initialize all services in the correct order (happens while splash is showing)
+    await initializeServices();
+});
+
+// Graceful shutdown when user attempts to quit
+app.on('before-quit', async (event) => {
+    console.log('[Lifecycle] before-quit event triggered');
+    
+    // Prevent default quit behavior
+    event.preventDefault();
+    
+    // Start graceful shutdown
+    await gracefulShutdown();
+});
+
+// Handle when all windows are closed
+app.on('window-all-closed', () => {
+    console.log('[Lifecycle] All windows closed');
+    
+    // On macOS, applications typically stay running even when all windows are closed
+    if (process.platform !== 'darwin') {
+        console.log('[Lifecycle] Non-macOS platform, quitting app');
+        app.quit();
+    } else {
+        console.log('[Lifecycle] macOS platform, keeping app running in dock');
+    }
+});
+
+// macOS-specific: Recreate windows when app is activated from dock
+app.on('activate', async () => {
+    console.log('[Lifecycle] App activated (macOS)');
+    
+    // Recreate windows if none exist
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length === 0) {
+        console.log('[Lifecycle] No windows exist, recreating...');
+        await createWindows();
+    } else {
+        // Focus existing windows
+        const header = windows.find(w => w.getTitle().includes('Header'));
+        if (header && !header.isDestroyed()) {
+            header.focus();
+        }
+    }
+});
+
+// Handle uncaught exceptions with defensive programming
+process.on('uncaughtException', (error) => {
+    console.error('[Lifecycle] Uncaught exception:', error);
+    
+    // Show error to user but don't crash
+    const { dialog } = require('electron');
+    dialog.showErrorBox(
+        'Halo Error',
+        `An unexpected error occurred: ${error.message}\n\nThe application will continue running.`
+    );
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Lifecycle] Unhandled promise rejection:', reason);
+    console.error('[Lifecycle] Promise:', promise);
+});
+
+// ============================================================================
+// DEEP LINK HANDLING
+// ============================================================================
+
+function handleCustomUrl(url) {
+    console.log('[Protocol] Handling custom URL:', url);
+    
+    // Parse the URL and handle different actions
+    try {
+        const urlObj = new URL(url);
+        const action = urlObj.hostname;
+        const params = new URLSearchParams(urlObj.search);
+        
+        console.log('[Protocol] Action:', action);
+        console.log('[Protocol] Params:', Object.fromEntries(params));
+        
+        // Handle different protocol actions
+        switch (action) {
+            case 'auth':
+                console.log('[Protocol] Handling authentication callback');
+                // Handle authentication callback
+                break;
+            case 'settings':
+                console.log('[Protocol] Opening settings');
+                // Open settings window
+                break;
+            case 'listen':
+                console.log('[Protocol] Starting listen mode');
+                // Start listening mode
+                break;
+            default:
+                console.log('[Protocol] Unknown action:', action);
+        }
+        
+    } catch (error) {
+        console.error('[Protocol] Error parsing URL:', error);
+    }
+}

@@ -1,0 +1,252 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #ffffff;
+    color: #1e1e1e;
+    overflow: hidden;
+    user-select: none;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+/* Dark mode styles */
+body.dark-mode {
+    background: #1e1e1e;
+    color: #ffffff;
+}
+
+/* Draggable area for frameless window */
+.drag-bar {
+    -webkit-app-region: drag;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 36px;
+    z-index: 1000;
+}
+
+/* Make interactive elements non-draggable */
+.next-btn, video, .loading-container {
+    -webkit-app-region: no-drag;
+}
+
+/* Background video */
+.bg-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.3;
+}
+
+/* Dark overlay - removed as we're using solid backgrounds */
+.scrim {
+    display: none;
+}
+
+/* Halo logo */
+.halo-logo {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    opacity: 0;
+    /* Animation will be triggered by JavaScript */
+}
+
+.logo-img {
+    width: 270px;
+    height: auto;
+    display: none;
+}
+
+/* Show appropriate logo based on mode */
+body .light-logo {
+    display: none;
+}
+
+body .dark-logo {
+    display: block;
+}
+
+body.dark-mode .light-logo {
+    display: block;
+}
+
+body.dark-mode .dark-logo {
+    display: none;
+}
+
+/* Loading container */
+.loading-container {
+    z-index: 500;
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: auto;
+}
+
+.loading-screen {
+    pointer-events: auto;
+    color: #fff;
+    background-color: transparent;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.loading-words {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5em;
+    opacity: 0;
+    z-index: 10;
+}
+
+.loading-words__dot {
+    display: none;
+}
+
+.loading-words__word {
+    font-size: 3.5em;
+    font-weight: 300;
+    line-height: 1;
+    margin: 0;
+    color: #1e1e1e;
+    text-shadow: none;
+    letter-spacing: 0.05em;
+    text-align: center;
+}
+
+body.dark-mode .loading-words__word {
+    color: #ffffff;
+    text-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
+}
+
+/* Next button */
+.next-btn {
+    position: absolute;
+    top: 65%;
+    left: 50%;
+    transform: translate(-50%, -50%) translateY(20px);
+    padding: 10px 24px;
+    border-radius: 25px;
+    background: #1f7d53;
+    color: #ffffff;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 10;
+    opacity: 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(31, 125, 83, 0.3);
+}
+
+.next-btn.show {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+}
+
+.next-btn:hover {
+    transform: translate(-50%, -52%);
+    box-shadow: 0 6px 30px rgba(31, 125, 83, 0.5);
+    background: #176843;
+}
+
+.next-btn:active {
+    transform: translate(-50%, -50%);
+}
+
+.arrow-icon {
+    fill: currentColor;
+    transition: transform 0.3s ease;
+    width: 16px;
+    height: 16px;
+}
+
+.next-btn:hover .arrow-icon {
+    transform: translateX(3px);
+}
+
+/* Animation classes */
+.halo-logo.show {
+    animation: fadeInLogo 1s ease-out forwards;
+}
+
+/* Animations */
+@keyframes fadeInLogo {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -40%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+@keyframes pulseRing {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
+}
+
+@keyframes rotateRing {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulseDot {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .loading-words {
+        font-size: 2.75vw;
+    }
+    
+    .logo-text {
+        font-size: 24px;
+    }
+    
+    .loading-words__word {
+        font-size: 3em;
+    }
+}

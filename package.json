@@ -1,0 +1,206 @@
+{
+  "name": "halo",
+  "productName": "Halo",
+  "version": "0.2.4",
+  "description": "desktop assistant",
+  "main": "src/index.js",
+  "author": {
+    "name": "Pickle Team"
+  },
+  "license": "GPL-3.0",
+  "homepage": "https://clueless.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clueless/clueless.git"
+  },
+  "keywords": [
+    "halo",
+    "ai assistant",
+    "real-time",
+    "live summary",
+    "contextual ai"
+  ],
+  "scripts": {
+    "setup": "npm install && cd halo_web && npm install && npm run build && cd .. && npm start",
+    "start": "npm run build:renderer && electron .",
+    "package": "npm run build:all && electron-builder --dir",
+    "make": "npm run build:renderer && electron-forge make",
+    "build": "npm run build:all && electron-builder --config electron-builder.yml --publish never",
+    "build:win": "npm run build:all && electron-builder --win --x64 --publish never",
+    "publish": "npm run build:all && electron-builder --config electron-builder.yml --publish always",
+    "lint": "eslint --ext .ts,.tsx,.js .",
+    "postinstall": "electron-builder install-app-deps",
+    "build:renderer": "node build.js",
+    "build:web": "cd halo_web && npm run build && cd ..",
+    "build:all": "npm run build:renderer && npm run build:web",
+    "watch:renderer": "node build.js --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
+    "@deepgram/sdk": "^4.9.1",
+    "@google/genai": "^1.8.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.10.0",
+    "better-sqlite3": "^9.2.2",
+    "chokidar": "^3.5.3",
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "crypto-js": "^4.2.0",
+    "del": "^8.0.0",
+    "dotenv": "^16.6.1",
+    "electron": "^28.0.0",
+    "electron-devtools-installer": "^3.2.0",
+    "electron-log": "^5.0.1",
+    "electron-reloader": "^1.2.3",
+    "electron-squirrel-startup": "^1.0.0",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.1.7",
+    "express": "^4.18.2",
+    "fast-glob": "^3.3.2",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.4.0",
+    "form-data": "^4.0.0",
+    "fs-extra": "^11.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "keytar": "^7.9.0",
+    "lodash": "^4.17.21",
+    "mime-types": "^2.1.35",
+    "moment": "^2.29.4",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.70.0",
+    "portkey-ai": "^1.10.1",
+    "react-hot-toast": "^2.5.2",
+    "sharp": "^0.34.2",
+    "undici": "^6.0.0",
+    "uuid": "^9.0.1",
+    "validator": "^13.11.0",
+    "wait-on": "^8.0.3",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^1.8.0",
+    "@electron/notarize": "^2.5.0",
+    "electron": "^30.5.1",
+    "electron-builder": "^26.0.12",
+    "electron-reloader": "^1.2.3",
+    "esbuild": "^0.25.5",
+    "prettier": "^3.6.2"
+  },
+  "optionalDependencies": {
+    "electron-liquid-glass": "^1.0.1"
+  },
+  "build": {
+    "appId": "com.halo.app",
+    "productName": "Halo",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "clueless",
+      "repo": "clueless"
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "os": [
+    "darwin",
+    "win32",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

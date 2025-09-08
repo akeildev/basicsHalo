@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halo - Ask</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="ask-container">
+        <div class="ask-header">
+            <div class="title">Ask Halo</div>
+            <div class="model-selector">
+                <select id="modelSelect" class="model-select">
+                    <option value="gpt-4">GPT-4</option>
+                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                    <option value="gemini-pro">Gemini Pro</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message assistant welcome">
+                    <div class="message-content">
+                        <div class="message-text">Hello! I'm Halo, your AI assistant. How can I help you today?</div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    id="messageInput" 
+                    class="message-input" 
+                    placeholder="Ask me anything..."
+                    rows="1"
+                ></textarea>
+                <button class="send-btn" id="sendBtn" disabled>
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="input-footer">
+                <div class="shortcuts">
+                    <span class="shortcut">Press Enter to send</span>
+                    <span class="shortcut">Shift+Enter for new line</span>
+                </div>
+                <div class="character-count" id="characterCount">0 / 4000</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="index.js"></script>
+</body>
+</html>
