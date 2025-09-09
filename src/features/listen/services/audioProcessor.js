@@ -1,4 +1,5 @@
 const echoCancellation = require('./echoCancellation');
+const { isVoiceActive, enhancedVAD, convertFloat32ToInt16, arrayBufferToBase64 } = require('./vadUtils');
 
 /**
  * AudioProcessor - Handles audio processing pipeline including VAD, format conversion, and streaming
@@ -218,27 +219,18 @@ class AudioProcessor {
      * Detect voice activity in audio frame
      */
     detectVoiceActivity(audioFrame) {
-        // Calculate RMS energy
-        let energy = 0;
-        for (let i = 0; i < audioFrame.length; i++) {
-            energy += audioFrame[i] * audioFrame[i];
-        }
-        energy = Math.sqrt(energy / audioFrame.length);
+        // Use enhanced VAD with adaptive threshold
+        const vadResult = enhancedVAD(audioFrame, {
+            threshold: this.config.vadThreshold,
+            adaptiveThreshold: true,
+            energyHistory: this.vad.energyHistory,
+            minEnergyHistory: 5
+        });
         
-        // Update energy history
-        this.vad.energyHistory.push(energy);
-        if (this.vad.energyHistory.length > 10) {
-            this.vad.energyHistory.shift();
-        }
+        // Update energy history from result
+        this.vad.energyHistory = vadResult.energyHistory;
         
-        // Calculate adaptive threshold
-        const averageEnergy = this.vad.energyHistory.reduce((sum, e) => sum + e, 0) / this.vad.energyHistory.length;
-        const adaptiveThreshold = Math.max(this.vad.energyThreshold, averageEnergy * 0.5);
-        
-        // Determine voice activity
-        const isVoice = energy > adaptiveThreshold;
-        
-        return isVoice;
+        return vadResult.isVoiceActive;
     }
 
     /**
@@ -330,19 +322,14 @@ class AudioProcessor {
      * Convert Float32Array to Int16Array
      */
     convertFloat32ToInt16(float32Array) {
-        const int16Array = new Int16Array(float32Array.length);
-        for (let i = 0; i < float32Array.length; i++) {
-            int16Array[i] = Math.max(-32768, Math.min(32767, float32Array[i] * 32768));
-        }
-        return int16Array;
+        return convertFloat32ToInt16(float32Array);
     }
 
     /**
      * Encode Int16Array to base64
      */
     encodeToBase64(int16Array) {
-        const buffer = Buffer.from(int16Array.buffer);
-        return buffer.toString('base64');
+        return arrayBufferToBase64(int16Array.buffer);
     }
 
     /**

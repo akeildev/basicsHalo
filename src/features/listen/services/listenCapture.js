@@ -2,6 +2,7 @@ const { desktopCapturer, systemPreferences } = require('electron');
 const { EventEmitter } = require('events');
 const permissionService = require('./permissionService');
 const platformAudioCapture = require('./platformAudioCapture');
+const audioCaptureCore = require('./audioCaptureCore');
 
 /**
  * ListenCapture - Unified media capture service for screen, microphone, and system audio
@@ -697,6 +698,103 @@ class ListenCapture extends EventEmitter {
     }
 
     /**
+     * Start audio capture with echo cancellation
+     */
+    async startAudioCaptureWithAEC(selectedMicId = null, captureSystemAudio = false) {
+        try {
+            console.log('[ListenCapture] Starting audio capture with AEC...');
+            
+            // Use the audio capture core for microphone capture
+            const result = await audioCaptureCore.captureAudioWithAEC(selectedMicId, captureSystemAudio);
+            
+            if (result) {
+                // Start system audio capture if requested
+                if (captureSystemAudio) {
+                    await audioCaptureCore.startSystemAudioCapture();
+                }
+                
+                // Update capture state
+                this.captureState.microphone.active = true;
+                this.captureState.systemAudio.active = captureSystemAudio;
+                this.isCapturing = true;
+                
+                console.log('[ListenCapture] ✅ Audio capture with AEC started');
+                this.emit('audioCaptureStarted', { 
+                    microphone: true, 
+                    systemAudio: captureSystemAudio 
+                });
+            }
+            
+            return result;
+            
+        } catch (error) {
+            console.error('[ListenCapture] ❌ Audio capture with AEC failed:', error);
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get available audio devices
+     */
+    async getAudioDevices() {
+        try {
+            console.log('[ListenCapture] Getting audio devices...');
+            const devices = await audioCaptureCore.getAudioDevices();
+            console.log(`[ListenCapture] Found ${devices.length} audio devices`);
+            return devices;
+        } catch (error) {
+            console.error('[ListenCapture] Error getting audio devices:', error);
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get audio capture status
+     */
+    getAudioCaptureStatus() {
+        try {
+            const status = audioCaptureCore.getCaptureStatus();
+            return {
+                ...status,
+                isCapturing: this.isCapturing,
+                isInitialized: this.isInitialized,
+                platform: this.platform
+            };
+        } catch (error) {
+            console.error('[ListenCapture] Error getting audio capture status:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Stop audio capture
+     */
+    async stopAudioCapture() {
+        try {
+            console.log('[ListenCapture] Stopping audio capture...');
+            
+            await audioCaptureCore.stopAudioCapture();
+            
+            // Update capture state
+            this.captureState.microphone.active = false;
+            this.captureState.systemAudio.active = false;
+            this.isCapturing = false;
+            
+            console.log('[ListenCapture] ✅ Audio capture stopped');
+            this.emit('audioCaptureStopped');
+            
+            return true;
+            
+        } catch (error) {
+            console.error('[ListenCapture] ❌ Audio capture stop failed:', error);
+            this.emit('error', error);
+            throw error;
+        }
+    }
+
+    /**
      * Cleanup resources
      */
     async cleanup() {
@@ -707,6 +805,9 @@ class ListenCapture extends EventEmitter {
             if (this.isCapturing) {
                 await this.stopCapture();
             }
+            
+            // Stop audio capture
+            await this.stopAudioCapture();
             
             // Cleanup platform audio capture
             await platformAudioCapture.cleanup();
