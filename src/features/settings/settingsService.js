@@ -7,6 +7,8 @@ const { windowPool } = require('../../window/windowManager');
 const NOTIFICATION_CONFIG = {
     RELEVANT_WINDOW_TYPES: ['settings', 'header'],
     DEBOUNCE_DELAY: 300,
+    MAX_RETRY_ATTEMPTS: 3,
+    RETRY_BASE_DELAY: 1000, // exponential backoff base (ms)
 };
 
 // Default keybinds configuration per platform
@@ -148,9 +150,27 @@ class SettingsService {
             const defaults = getDefaultSettings();
             const saved = store.get(userSettingsKey, {});
             this.currentSettings = { ...defaults, ...saved };
+            
+            // Log settings retrieval (mask sensitive data)
+            console.log('[SettingsService] ✅ Settings loaded from:', userSettingsKey);
+            
+            // Check for both possible key names (handle migration)
+            if (this.currentSettings.openaiApiKey || this.currentSettings.openaiKey) {
+                const apiKey = this.currentSettings.openaiApiKey || this.currentSettings.openaiKey;
+                console.log('[SettingsService] OpenAI API key found:', 
+                    apiKey.substring(0, 7) + '...');
+                // Ensure consistent naming
+                this.currentSettings.openaiApiKey = apiKey;
+                if (this.currentSettings.openaiKey) {
+                    delete this.currentSettings.openaiKey;
+                }
+            } else {
+                console.log('[SettingsService] ⚠️ No OpenAI API key configured');
+            }
+            
             return this.currentSettings;
         } catch (err) {
-            console.error('[SettingsService] Error getting settings:', err);
+            console.error('[SettingsService] ❌ Error getting settings:', err);
             return getDefaultSettings();
         }
     }
@@ -161,12 +181,47 @@ class SettingsService {
             const userSettingsKey = uid ? `users.${uid}` : 'users.default';
             const currentSaved = store.get(userSettingsKey, {});
             const merged = { ...currentSaved, ...settings };
+            
+            // Handle key name migration
+            if (settings.openaiKey && !settings.openaiApiKey) {
+                settings.openaiApiKey = settings.openaiKey;
+                delete settings.openaiKey;
+                console.log('[SettingsService] Migrating openaiKey to openaiApiKey');
+            }
+            
+            // Log what's being saved (mask sensitive data)
+            console.log('[SettingsService] 💾 Saving settings to:', userSettingsKey);
+            const keysToSave = Object.keys(settings);
+            console.log('[SettingsService] Updating keys:', keysToSave);
+            
+            if (settings.openaiApiKey) {
+                console.log('[SettingsService] Saving OpenAI API key:', 
+                    settings.openaiApiKey.substring(0, 7) + '...');
+            } else {
+                console.log('[SettingsService] ⚠️ No OpenAI API key in save request');
+            }
+            
             store.set(userSettingsKey, merged);
             this.currentSettings = merged;
+            
+            // Verify the save
+            const verified = store.get(userSettingsKey);
+            if (settings.openaiApiKey) {
+                if (verified.openaiApiKey === merged.openaiApiKey) {
+                    console.log('[SettingsService] ✅ OpenAI API key saved and verified successfully');
+                    console.log('[SettingsService] Verified key starts with:', verified.openaiApiKey.substring(0, 7) + '...');
+                } else {
+                    console.warn('[SettingsService] ⚠️ OpenAI API key save verification failed');
+                }
+            }
+            console.log('[SettingsService] ✅ Settings saved successfully');
+            
             windowNotificationManager.notifyRelevantWindows('settings-updated', this.currentSettings);
+            console.log('[SettingsService] 📢 Notified windows of settings update');
+            
             return { success: true };
         } catch (err) {
-            console.error('[SettingsService] Error saving settings:', err);
+            console.error('[SettingsService] ❌ Error saving settings:', err);
             return { success: false, error: err.message };
         }
     }

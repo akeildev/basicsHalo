@@ -9,6 +9,11 @@ class EchoCancellation {
     constructor() {
         this.isInitialized = false;
         this.wasmModule = null;
+        // Ensure single-load semantics for the WASM module
+        this.modulePromise = null;
+        // Placeholder for a single AEC instance pointer if provided by WASM
+        this.aecPtr = 0;
+        
         this.audioBuffer = {
             microphone: new Float32Array(4096),
             systemAudio: new Float32Array(4096),
@@ -41,7 +46,7 @@ class EchoCancellation {
         try {
             console.log('[EchoCancellation] Initializing WebAssembly module...');
             
-            // Try to load WebAssembly module
+            // Try to load WebAssembly module (singleton)
             await this.loadWasmModule();
             
             // Initialize audio buffers
@@ -60,27 +65,46 @@ class EchoCancellation {
     }
 
     /**
-     * Load WebAssembly module
+     * Load WebAssembly module (singleton)
      */
     async loadWasmModule() {
-        try {
-            const wasmPath = path.join(__dirname, '../../../wasm/echo_cancellation.wasm');
-            
-            if (fs.existsSync(wasmPath)) {
-                // Load WebAssembly module
+        // If already loaded or loading, reuse the promise
+        if (this.modulePromise) {
+            await this.modulePromise;
+            return;
+        }
+
+        this.modulePromise = (async () => {
+            try {
+                const wasmPath = path.join(__dirname, '../../../wasm/echo_cancellation.wasm');
+
+                // Check if WASM file exists
+                if (!fs.existsSync(wasmPath)) {
+                    console.log('[EchoCancellation] WebAssembly module not found at:', wasmPath);
+                    throw new Error('WebAssembly module not found');
+                }
+
+                console.log('[EchoCancellation] Loading WebAssembly module from:', wasmPath);
+
                 const wasmBytes = fs.readFileSync(wasmPath);
                 const wasmModule = await WebAssembly.instantiate(wasmBytes);
-                
                 this.wasmModule = wasmModule.instance;
-                console.log('[EchoCancellation] WebAssembly module loaded');
-            } else {
-                throw new Error('WebAssembly module not found');
+
+                // Optionally create a single AEC instance if exported by the module
+                if (this.wasmModule.exports && typeof this.wasmModule.exports.aec_new === 'function') {
+                    this.aecPtr = this.wasmModule.exports.aec_new(this.sampleRate, this.frameSize);
+                    console.log('[EchoCancellation] AEC instance created');
+                }
+
+                console.log('[EchoCancellation] WebAssembly module loaded successfully');
+            } catch (error) {
+                console.warn('[EchoCancellation] WebAssembly module not available, using software fallback:', error.message);
+                // Don't throw - let the fallback handle it
+                this.wasmModule = null;
             }
-            
-        } catch (error) {
-            console.warn('[EchoCancellation] WebAssembly module not available, using software fallback');
-            throw error;
-        }
+        })();
+
+        await this.modulePromise;
     }
 
     /**
@@ -117,7 +141,7 @@ class EchoCancellation {
         try {
             let output;
             
-            if (this.wasmModule) {
+            if (this.wasmModule && this.wasmModule.exports && typeof this.wasmModule.exports.process_echo_cancellation === 'function') {
                 output = this.processWithWasm(microphoneData, systemAudioData);
             } else {
                 output = this.processWithSoftware(microphoneData, systemAudioData);
@@ -152,10 +176,12 @@ class EchoCancellation {
             micMemory.set(microphoneData);
             sysMemory.set(systemAudioData);
             
-            // Call WebAssembly function
-            this.wasmModule.exports.process_echo_cancellation(
-                micPtr, sysPtr, outPtr, microphoneData.length
-            );
+            // Call WebAssembly function (prefer instance-based API if available)
+            if (this.aecPtr && typeof this.wasmModule.exports.process_echo_cancellation_ptr === 'function') {
+                this.wasmModule.exports.process_echo_cancellation_ptr(this.aecPtr, micPtr, sysPtr, outPtr, microphoneData.length);
+            } else {
+                this.wasmModule.exports.process_echo_cancellation(micPtr, sysPtr, outPtr, microphoneData.length);
+            }
             
             // Copy result back
             const outputMemory = new Float32Array(this.wasmModule.exports.memory.buffer, outPtr, microphoneData.length);
@@ -265,7 +291,7 @@ class EchoCancellation {
      */
     reset() {
         try {
-            if (this.wasmModule && this.wasmModule.exports.reset_filter) {
+            if (this.wasmModule && this.wasmModule.exports && this.wasmModule.exports.reset_filter) {
                 this.wasmModule.exports.reset_filter();
             }
             
@@ -288,11 +314,18 @@ class EchoCancellation {
      */
     cleanup() {
         try {
-            if (this.wasmModule && this.wasmModule.exports.cleanup) {
-                this.wasmModule.exports.cleanup();
+            if (this.wasmModule) {
+                if (this.aecPtr && this.wasmModule.exports && typeof this.wasmModule.exports.aec_destroy === 'function') {
+                    this.wasmModule.exports.aec_destroy(this.aecPtr);
+                }
+                if (this.wasmModule.exports && this.wasmModule.exports.cleanup) {
+                    this.wasmModule.exports.cleanup();
+                }
             }
             
+            this.aecPtr = 0;
             this.wasmModule = null;
+            this.modulePromise = null;
             this.isInitialized = false;
             
             console.log('[EchoCancellation] Cleanup complete');

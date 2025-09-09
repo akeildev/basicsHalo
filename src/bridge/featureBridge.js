@@ -35,6 +35,14 @@ class FeatureBridge extends EventEmitter {
         // Handle window-specific feature requests
         ipcMain.handle('feature:request', this.handleFeatureRequest.bind(this));
         
+        // Media bridge handlers (renderer -> main)
+        ipcMain.on('media:microphoneData', this.handleMicrophoneData.bind(this));
+        ipcMain.on('media:screenAudioData', this.handleScreenAudioData.bind(this));
+        ipcMain.on('media:microphoneStarted', () => console.log('[FeatureBridge] Microphone started in renderer'));
+        ipcMain.on('media:microphoneStopped', () => console.log('[FeatureBridge] Microphone stopped in renderer'));
+        ipcMain.on('media:screenStarted', () => console.log('[FeatureBridge] Screen capture started in renderer'));
+        ipcMain.on('media:screenStopped', () => console.log('[FeatureBridge] Screen capture stopped in renderer'));
+        
         console.log('[FeatureBridge] IPC handlers registered');
     }
 
@@ -52,13 +60,35 @@ class FeatureBridge extends EventEmitter {
     async handleListenStart(event, data = {}) {
         try {
             console.log('[FeatureBridge] Listen start requested:', data);
+            
+            // Use capture window for media capture if available
+            let captureResult = null;
+            try {
+                const captureWindow = require('../windows/captureWindow');
+                if (captureWindow.window && captureWindow.isReady) {
+                    captureResult = await captureWindow.invoke('capture:start', data);
+                } else {
+                    console.log('[FeatureBridge] Capture window not ready, skipping media capture');
+                }
+            } catch (error) {
+                console.error('[FeatureBridge] Capture window error:', error);
+                // Continue without capture - system audio will still work
+            }
+            
+            // Also call the original handler for system audio
             const handler = this.messageHandlers.get('listen:start');
             const result = await handler(data);
             
-            // Emit event for other services to listen
-            this.emit('listen:started', { data, result, windowId: event.sender.id });
+            // Combine results
+            const combinedResult = {
+                ...result,
+                capture: captureResult
+            };
             
-            return { success: true, data: result };
+            // Emit event for other services to listen
+            this.emit('listen:started', { data, result: combinedResult, windowId: event.sender.id });
+            
+            return { success: true, data: combinedResult };
         } catch (error) {
             console.error('[FeatureBridge] Listen start error:', error);
             this.emit('listen:error', { error: error.message, windowId: event.sender.id });
@@ -69,12 +99,34 @@ class FeatureBridge extends EventEmitter {
     async handleListenStop(event, data = {}) {
         try {
             console.log('[FeatureBridge] Listen stop requested:', data);
+            
+            // Stop capture window if available
+            let captureResult = null;
+            try {
+                const captureWindow = require('../windows/captureWindow');
+                if (captureWindow.window && captureWindow.isReady) {
+                    captureResult = await captureWindow.invoke('capture:stop');
+                } else {
+                    console.log('[FeatureBridge] Capture window not ready, skipping media stop');
+                }
+            } catch (error) {
+                console.error('[FeatureBridge] Capture window error:', error);
+                // Continue without capture
+            }
+            
+            // Also call the original handler for system audio
             const handler = this.messageHandlers.get('listen:stop');
             const result = await handler(data);
             
-            this.emit('listen:stopped', { data, result, windowId: event.sender.id });
+            // Combine results
+            const combinedResult = {
+                ...result,
+                capture: captureResult
+            };
             
-            return { success: true, data: result };
+            this.emit('listen:stopped', { data, result: combinedResult, windowId: event.sender.id });
+            
+            return { success: true, data: combinedResult };
         } catch (error) {
             console.error('[FeatureBridge] Listen stop error:', error);
             this.emit('listen:error', { error: error.message, windowId: event.sender.id });
@@ -204,6 +256,49 @@ class FeatureBridge extends EventEmitter {
         } catch (error) {
             console.error('[FeatureBridge] Settings reset error:', error);
             return { success: false, error: error.message };
+        }
+    }
+
+    // Media Bridge Handlers
+    handleMicrophoneData(event, audioData) {
+        try {
+            // Convert array back to Float32Array
+            const floatArray = new Float32Array(audioData);
+            
+            // Forward to audio processor
+            const handler = this.messageHandlers.get('audio:processMicrophone');
+            if (handler) {
+                handler(floatArray);
+            } else {
+                // If no handler, try to process directly
+                const listenService = require('../features/listen/listenService');
+                if (listenService.processor) {
+                    listenService.processor.processMicrophoneAudio(floatArray);
+                }
+            }
+        } catch (error) {
+            console.error('[FeatureBridge] Error handling microphone data:', error);
+        }
+    }
+
+    handleScreenAudioData(event, audioData) {
+        try {
+            // Convert array back to Float32Array
+            const floatArray = new Float32Array(audioData);
+            
+            // Forward to audio processor
+            const handler = this.messageHandlers.get('audio:processScreen');
+            if (handler) {
+                handler(floatArray);
+            } else {
+                // If no handler, try to process directly
+                const listenService = require('../features/listen/listenService');
+                if (listenService.processor) {
+                    listenService.processor.processSystemAudio(floatArray);
+                }
+            }
+        } catch (error) {
+            console.error('[FeatureBridge] Error handling screen audio data:', error);
         }
     }
 

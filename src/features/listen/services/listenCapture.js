@@ -177,33 +177,19 @@ class ListenCapture extends EventEmitter {
                 audio: false // Screen audio handled separately
             };
             
-            // Start screen capture
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                    mandatory: {
-                        chromeMediaSource: 'desktop',
-                        chromeMediaSourceId: source.id,
-                        minWidth: constraints.minWidth,
-                        maxWidth: constraints.maxWidth,
-                        minHeight: constraints.minHeight,
-                        maxHeight: constraints.maxHeight,
-                        minFrameRate: constraints.frameRate,
-                        maxFrameRate: constraints.frameRate
-                    }
-                }
-            });
+            // Screen capture is handled by the capture window in renderer process
+            // We just track the state here for coordination
+            console.log('[ListenCapture] Screen capture will be handled by capture window');
             
-            // Update state
+            // Update state (stream will be managed by capture window)
             this.captureState.screen = {
                 active: true,
-                stream,
+                stream: null, // Stream managed by capture window
                 source,
                 constraints
             };
             
-            // Set up stream handling
-            this._setupScreenStreamHandling(stream);
+            // Stream handling is managed by capture window, no local stream to set up
             
             console.log('[ListenCapture] ✅ Screen capture started');
             this.emit('screenCaptureStarted', { source, constraints });
@@ -242,21 +228,18 @@ class ListenCapture extends EventEmitter {
                 ...options
             };
             
-            // Start microphone capture
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: constraints,
-                video: false
-            });
+            // Microphone capture is handled by the capture window in renderer process
+            // We just track the state here for coordination
+            console.log('[ListenCapture] Microphone capture will be handled by capture window');
             
-            // Update state
+            // Update state (stream will be managed by capture window)
             this.captureState.microphone = {
                 active: true,
-                stream,
+                stream: null, // Stream managed by capture window
                 constraints
             };
             
-            // Set up stream handling
-            this._setupMicrophoneStreamHandling(stream);
+            // Stream handling is managed by capture window, no local stream to set up
             
             console.log('[ListenCapture] ✅ Microphone capture started');
             this.emit('microphoneCaptureStarted', { constraints });
@@ -344,21 +327,23 @@ class ListenCapture extends EventEmitter {
                 systemAudio: false
             };
             
-            // Start screen capture if requested
+            // Start screen capture if requested (handled by capture window)
             if (options.captureScreen !== false) {
                 try {
                     results.screen = await this.startScreenCapture(null, options.screen);
                 } catch (error) {
-                    console.warn('[ListenCapture] Screen capture failed:', error.message);
+                    console.warn('[ListenCapture] Screen capture setup failed:', error.message);
+                    results.screen = false;
                 }
             }
-            
-            // Start microphone capture if requested
+
+            // Start microphone capture if requested (handled by capture window)
             if (options.captureMicrophone !== false) {
                 try {
                     results.microphone = await this.startMicrophoneCapture(options.microphone);
                 } catch (error) {
-                    console.warn('[ListenCapture] Microphone capture failed:', error.message);
+                    console.warn('[ListenCapture] Microphone capture setup failed:', error.message);
+                    results.microphone = false;
                 }
             }
             

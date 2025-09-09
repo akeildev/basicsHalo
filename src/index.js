@@ -38,7 +38,7 @@ const splashService = require('./services/SplashService');
 // Import new configuration and infrastructure services
 const configService = require('./services/ConfigService');
 const encryptionService = require('./services/EncryptionService');
-const settingsStoreService = require('./services/SettingsService');
+const settingsStoreService = require('./features/settings/settingsService');
 const PathUtils = require('./utils/PathUtils');
 
 // Global variables
@@ -213,8 +213,17 @@ async function initializeServices() {
         console.log('[Lifecycle] Initializing encryption and settings...');
         const userId = 'default'; // Will be replaced with actual user ID after auth
         await encryptionService.initialize(userId);
-        await settingsStoreService.initialize(userId);
         console.log('[Lifecycle] ✅ Encryption and settings initialized');
+        
+        // Register settings handlers with featureBridge
+        featureBridge.registerHandler('settings', 'update', async (data) => {
+            console.log('[Lifecycle] Settings update handler called with:', Object.keys(data));
+            return await settingsStoreService.saveSettings(data);
+        });
+        featureBridge.registerHandler('settings', 'get', async (key) => {
+            return await settingsStoreService.getSettings();
+        });
+        console.log('[Lifecycle] ✅ Settings handlers registered');
         
         // 4. Initialize authentication
         console.log('[Lifecycle] Initializing authentication...');
@@ -373,8 +382,18 @@ app.whenReady().then(async () => {
     await splashService.initialize();
     
     // Setup callback for when splash is dismissed BEFORE starting it
+    let windowsCreated = false;
     splashService.setOnNextCallback(async () => {
+        if (windowsCreated) {
+            console.log('[Lifecycle] Windows already created, skipping...');
+            return;
+        }
+        windowsCreated = true;
+        
         console.log('[Lifecycle] Transitioning from splash to main app...');
+        
+        // Add a small delay to ensure splash is fully dismissed
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Create main windows
         await createWindows();
@@ -387,6 +406,36 @@ app.whenReady().then(async () => {
         try { (require('./bridge/featureBridge')).initialize(); } catch {}
         console.log('[Lifecycle] ✅ Bridges connected');
 
+        // Initialize capture window for media capture
+        console.log('[Lifecycle] Initializing capture window...');
+        try {
+            const captureWindow = require('./windows/captureWindow');
+            captureWindow.create();
+            await captureWindow.waitForReady();
+            console.log('[Lifecycle] ✅ Capture window initialized');
+        } catch (error) {
+            console.error('[Lifecycle] ❌ Failed to initialize capture window:', error);
+            // Continue without capture window - system audio will still work
+        }
+        
+        // Request microphone permissions on macOS
+        if (process.platform === 'darwin') {
+            const { systemPreferences } = require('electron');
+            console.log('[Lifecycle] Checking microphone permissions...');
+            try {
+                const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+                console.log('[Lifecycle] Microphone permission status:', micStatus);
+                
+                if (micStatus === 'not-determined') {
+                    console.log('[Lifecycle] Requesting microphone access...');
+                    const granted = await systemPreferences.askForMediaAccess('microphone');
+                    console.log('[Lifecycle] Microphone access granted:', granted);
+                }
+            } catch (error) {
+                console.error('[Lifecycle] Error checking microphone permissions:', error);
+            }
+        }
+        
         // Initialize Listen Service and IPC handlers
         try {
             await listenService.initialize();
@@ -485,6 +534,9 @@ app.whenReady().then(async () => {
     
     // Initialize all services in the correct order (happens while splash is showing)
     await initializeServices();
+    
+    // Services are initialized, splash will wait for user to click "Get Started"
+    console.log('[Lifecycle] Services initialized, waiting for user to click Get Started...');
 });
 
 // Graceful shutdown when user attempts to quit

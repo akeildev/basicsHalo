@@ -33,6 +33,9 @@ class WindowBridge extends EventEmitter {
         ipcMain.handle('window:maximize', this.handleMaximizeWindow.bind(this));
         ipcMain.handle('window:close', this.handleCloseWindow.bind(this));
         
+        // App lifecycle
+        ipcMain.handle('app:quit', this.handleQuitApplication.bind(this));
+        
         // Window positioning and layout
         ipcMain.handle('window:getBounds', this.handleGetBounds.bind(this));
         ipcMain.handle('window:setBounds', this.handleSetBounds.bind(this));
@@ -634,6 +637,32 @@ class WindowBridge extends EventEmitter {
     };
 
     // Cleanup
+    // App lifecycle handlers
+    async handleQuitApplication(event) {
+        try {
+            const { app, BrowserWindow } = require('electron');
+            console.log('[WindowBridge] Quit application requested');
+            
+            // Close all windows first
+            const windows = BrowserWindow.getAllWindows();
+            windows.forEach(win => {
+                if (!win.isDestroyed()) {
+                    win.destroy();
+                }
+            });
+            
+            // Force quit the app
+            app.exit(0);
+            
+            return { success: true };
+        } catch (error) {
+            console.error('[WindowBridge] Error quitting application:', error);
+            // Force exit even on error
+            process.exit(0);
+            return { success: false, error: error.message };
+        }
+    }
+    
     destroy() {
         // Remove all IPC handlers
         ipcMain.removeAllListeners('window:requestVisibility');
@@ -652,6 +681,7 @@ class WindowBridge extends EventEmitter {
         ipcMain.removeAllListeners('window:setBounds');
         ipcMain.removeAllListeners('window:center');
         ipcMain.removeAllListeners('window:bringToFront');
+        ipcMain.removeAllListeners('app:quit');
         
         this.windowPool.clear();
         this.windowStates.clear();

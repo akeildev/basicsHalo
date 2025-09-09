@@ -14,7 +14,7 @@ function getCurrentDisplay(window) {
 class WindowLayoutManager {
     constructor() {
         this.screenBounds = null;
-        this.windowSpacing = 20;
+        this.windowSpacing = 4; // Reduced from 20 to minimize gaps
         this.windowPool = null; // Will be set by windowManager
         this.updateScreenBounds();
         
@@ -79,12 +79,14 @@ class WindowLayoutManager {
 
         const ask = this.windowPool && this.windowPool.get ? this.windowPool.get('ask') : null;
         const listen = this.windowPool && this.windowPool.get ? this.windowPool.get('listen') : null;
+        const settings = this.windowPool && this.windowPool.get ? this.windowPool.get('settings') : null;
 
         const askVis = visibility && visibility.ask && ask && !ask.isDestroyed();
         const listenVis = visibility && visibility.listen && listen && !listen.isDestroyed();
-        if (!askVis && !listenVis) return {};
+        const settingsVis = visibility && visibility.settings && settings && !settings.isDestroyed();
+        if (!askVis && !listenVis && !settingsVis) return {};
 
-        const PAD = 8;
+        const PAD = 4; // Reduced padding for tighter window grouping
         const headerCenterXRel = headerBounds.x - workAreaX + headerBounds.width / 2;
         const relativeX = headerCenterXRel / screenWidth;
         const relativeY = (headerBounds.y - workAreaY) / screenHeight;
@@ -92,10 +94,39 @@ class WindowLayoutManager {
 
         const askB = askVis ? ask.getBounds() : null;
         const listenB = listenVis ? listen.getBounds() : null;
+        const settingsB = settingsVis ? settings.getBounds() : null;
 
         const layout = {};
 
-        if (askVis && listenVis) {
+        // Handle different combinations of visible windows
+        if (askVis && listenVis && settingsVis) {
+            // All three windows visible - arrange in a row
+            const totalWidth = askB.width + listenB.width + settingsB.width + 2 * PAD;
+            let startX = headerCenterXRel - totalWidth / 2;
+
+            // Ensure within bounds
+            if (startX < PAD) startX = PAD;
+            if (startX + totalWidth > screenWidth - PAD) startX = screenWidth - PAD - totalWidth;
+
+            layout.ask = {
+                x: Math.round(startX + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: askB.width,
+                height: askB.height
+            };
+            layout.listen = {
+                x: Math.round(startX + askB.width + PAD + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: listenB.width,
+                height: listenB.height
+            };
+            layout.settings = {
+                x: Math.round(startX + askB.width + listenB.width + 2 * PAD + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: settingsB.width,
+                height: settingsB.height
+            };
+        } else if (askVis && listenVis) {
             // Start with ask centered under header; listen to the left
             let askXRel = headerCenterXRel - (askB.width / 2);
             let listenXRel = askXRel - listenB.width - PAD;
@@ -140,9 +171,56 @@ class WindowLayoutManager {
                     height: listenB.height
                 };
             }
+        } else if (askVis && settingsVis) {
+            // Ask and settings visible - center ask, settings to the right
+            let askXRel = headerCenterXRel - (askB.width / 2);
+            let settingsXRel = askXRel + askB.width + PAD;
+
+            // Right boundary collision
+            if (settingsXRel + settingsB.width > screenWidth - PAD) {
+                settingsXRel = screenWidth - PAD - settingsB.width;
+                askXRel = settingsXRel - askB.width - PAD;
+            }
+
+            layout.ask = {
+                x: Math.round(askXRel + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: askB.width,
+                height: askB.height
+            };
+            layout.settings = {
+                x: Math.round(settingsXRel + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: settingsB.width,
+                height: settingsB.height
+            };
+        } else if (listenVis && settingsVis) {
+            // Listen and settings visible - center listen, settings to the right
+            let listenXRel = headerCenterXRel - (listenB.width / 2);
+            let settingsXRel = listenXRel + listenB.width + PAD;
+
+            // Right boundary collision
+            if (settingsXRel + settingsB.width > screenWidth - PAD) {
+                settingsXRel = screenWidth - PAD - settingsB.width;
+                listenXRel = settingsXRel - listenB.width - PAD;
+            }
+
+            layout.listen = {
+                x: Math.round(listenXRel + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: listenB.width,
+                height: listenB.height
+            };
+            layout.settings = {
+                x: Math.round(settingsXRel + workAreaX),
+                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                width: settingsB.width,
+                height: settingsB.height
+            };
         } else {
-            const winName = askVis ? 'ask' : 'listen';
-            const winB = askVis ? askB : listenB;
+            // Only one window visible
+            const winName = askVis ? 'ask' : listenVis ? 'listen' : 'settings';
+            const winB = askVis ? askB : listenVis ? listenB : settingsB;
             if (!winB) return {};
 
             let xRel = headerCenterXRel - winB.width / 2;
@@ -168,10 +246,10 @@ class WindowLayoutManager {
 
     calculateListenWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
-        const width = 400;
-        const height = 200;
-        const minWidth = 300;
-        const minHeight = 150;
+        const width = 360; // Slightly wider for better readability
+        const height = 220; // Increased height for less compressed look
+        const minWidth = 320;
+        const minHeight = 200;
         
         // Clamp dimensions
         const finalWidth = Math.max(minWidth, Math.min(width, workArea.width - 2 * this.windowSpacing));
@@ -182,15 +260,15 @@ class WindowLayoutManager {
         if (headerBounds) {
             if (strategy.primary === 'below') {
                 x = headerBounds.x;
-                y = headerBounds.y + headerBounds.height + 10;
+                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x;
-                y = headerBounds.y - finalHeight - 10;
+                y = headerBounds.y - finalHeight - 4; // Reduced gap
             } else if (strategy.primary === 'right') {
-                x = headerBounds.x + headerBounds.width + 10;
+                x = headerBounds.x + headerBounds.width + 4; // Reduced gap
                 y = headerBounds.y;
             } else {
-                x = headerBounds.x - finalWidth - 10;
+                x = headerBounds.x - finalWidth - 4; // Reduced gap
                 y = headerBounds.y;
             }
         } else {
@@ -208,9 +286,9 @@ class WindowLayoutManager {
 
     calculateAskWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
-        const width = 500;
-        const height = 600;
-        const minWidth = 400;
+        const width = 400; // Reduced from 500 for more compact design
+        const height = 480; // Reduced from 600 for modular appearance
+        const minWidth = 350;
         const minHeight = 400;
         
         // Clamp dimensions
@@ -222,15 +300,15 @@ class WindowLayoutManager {
         if (headerBounds) {
             if (strategy.primary === 'below') {
                 x = headerBounds.x + headerBounds.width - finalWidth;
-                y = headerBounds.y + headerBounds.height + 10;
+                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x + headerBounds.width - finalWidth;
-                y = headerBounds.y - finalHeight - 10;
+                y = headerBounds.y - finalHeight - 4; // Reduced gap
             } else if (strategy.primary === 'right') {
-                x = headerBounds.x + headerBounds.width + 10;
+                x = headerBounds.x + headerBounds.width + 4; // Reduced gap
                 y = headerBounds.y;
             } else {
-                x = headerBounds.x - finalWidth - 10;
+                x = headerBounds.x - finalWidth - 4; // Reduced gap
                 y = headerBounds.y;
             }
         } else {
@@ -248,10 +326,10 @@ class WindowLayoutManager {
 
     calculateSettingsWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
-        const width = 600;
-        const height = 700;
-        const minWidth = 400;
-        const minHeight = 500;
+        const width = 420; // Reduced from 600
+        const height = 500; // Reduced from 700 
+        const minWidth = 380;
+        const minHeight = 450;
         
         // Clamp dimensions
         const finalWidth = Math.max(minWidth, Math.min(width, workArea.width - 2 * this.windowSpacing));
@@ -263,15 +341,15 @@ class WindowLayoutManager {
             // Prefer below/above; align near right edge (settings button area)
             if (strategy.primary === 'below') {
                 x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
-                y = headerBounds.y + headerBounds.height + 10;
+                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
-                y = headerBounds.y - finalHeight - 10;
+                y = headerBounds.y - finalHeight - 4; // Reduced gap
             } else if (strategy.primary === 'right') {
-                x = headerBounds.x + headerBounds.width + 10;
+                x = headerBounds.x + headerBounds.width + 4; // Reduced gap
                 y = headerBounds.y;
             } else {
-                x = headerBounds.x - finalWidth - 10;
+                x = headerBounds.x - finalWidth - 4; // Reduced gap
                 y = headerBounds.y;
             }
         } else {
@@ -316,7 +394,7 @@ class WindowLayoutManager {
             const settingsBounds = settings.getBounds();
             const display = getCurrentDisplay(header);
             const { x: workAreaX, y: workAreaY, width: screenWidth, height: screenHeight } = display.workArea;
-            const PAD = 5;
+            const PAD = 4; // Reduced from 5 to match other spacing
             const buttonPadding = 170;
             const x = headerBounds.x + headerBounds.width - settingsBounds.width + buttonPadding;
             const y = headerBounds.y + headerBounds.height + PAD;

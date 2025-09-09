@@ -237,6 +237,7 @@ function updateChildWindowLayouts(animated = true) {
         const window = windowPool.get(windowName);
         if (window && !window.isDestroyed()) {
             const layout = newLayout[windowName];
+            console.log(`[WindowManager] Positioning ${windowName} at:`, layout);
             if (animated && movementManager) {
                 // Use smooth movement if available
                 movementManager.moveWindow(window, layout);
@@ -244,6 +245,8 @@ function updateChildWindowLayouts(animated = true) {
                 // Direct positioning
                 window.setBounds(layout);
             }
+        } else {
+            console.warn(`[WindowManager] Cannot position ${windowName} - window not found or destroyed`);
         }
     });
 }
@@ -347,11 +350,12 @@ async function createHeaderWindow() {
         resizable: false,
         minimizable: false,
         maximizable: false,
+        show: false,  // Don't show immediately
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
-            preload: path.join(__dirname, '../renderer/header/preload.js')
+            preload: path.join(__dirname, '../../dist/renderer/header/preload.js')
         }
     });
     
@@ -372,9 +376,20 @@ async function createHeaderWindow() {
     
     await headerWindow.loadFile(path.join(__dirname, '../../dist/renderer/header/index.html'));
 
-    // Attempt restore
+    // Attempt restore (but force correct height for header)
     try {
         windowStateService.restoreWindowState('header', headerWindow);
+        // Force correct header height (70px) - don't let saved state override this
+        const currentBounds = headerWindow.getBounds();
+        if (currentBounds.height !== 70) {
+            headerWindow.setBounds({
+                x: currentBounds.x,
+                y: currentBounds.y,
+                width: currentBounds.width,
+                height: 70
+            });
+            console.log('[WindowManager] Corrected header height from', currentBounds.height, 'to 70');
+        }
     } catch {}
     
     // Track header movement to reflow child windows
@@ -436,7 +451,14 @@ async function createHeaderWindow() {
     try { windowStateService.attachListeners('header', headerWindow); } catch {}
     console.log('[WindowManager] ✅ Header window created');
     console.log('[WindowManager] Header window bounds:', headerWindow.getBounds());
-    console.log('[WindowManager] Header window visible:', headerWindow.isVisible());
+    
+    // Show the header window after a small delay (only if not already visible)
+    setTimeout(() => {
+        if (!headerWindow.isVisible()) {
+            headerWindow.show();
+            console.log('[WindowManager] Header window shown');
+        }
+    }, 200);
 }
 
 async function createListenWindow() {
@@ -462,7 +484,7 @@ async function createListenWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
-            preload: path.join(__dirname, '../renderer/listen/preload.js')
+            preload: path.join(__dirname, '../../dist/renderer/listen/preload.js')
         }
     });
     
@@ -559,7 +581,7 @@ async function createAskWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
-            preload: path.join(__dirname, '../renderer/ask/preload.js')
+            preload: path.join(__dirname, '../../dist/renderer/ask/preload.js')
         }
     });
     
@@ -634,10 +656,14 @@ async function createAskWindow() {
 }
 
 async function createSettingsWindow() {
+    console.log('[WindowManager] Creating settings window...');
+
     // Get header window bounds if available
     const headerWindow = windowPool.get('header');
     const headerBounds = headerWindow && !headerWindow.isDestroyed() ? headerWindow.getBounds() : null;
     const settingsLayout = layoutManager.calculateSettingsWindowLayout(headerBounds);
+
+    console.log('[WindowManager] Settings layout calculated:', settingsLayout);
     
     const settingsWindow = new BrowserWindow({
         width: settingsLayout.width,
@@ -656,7 +682,7 @@ async function createSettingsWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
-            preload: path.join(__dirname, '../renderer/settings/preload.js')
+            preload: path.join(__dirname, '../../dist/renderer/settings/preload.js')
         }
     });
     
@@ -675,7 +701,17 @@ async function createSettingsWindow() {
         }
     }
     
-    await settingsWindow.loadFile(path.join(__dirname, '../../dist/renderer/settings/index.html'));
+    const settingsHtmlPath = path.join(__dirname, '../../dist/renderer/settings/index.html');
+    const settingsPreloadPath = path.join(__dirname, '../../dist/renderer/settings/preload.js');
+    console.log('[WindowManager] Loading Settings window HTML from:', settingsHtmlPath);
+    console.log('[WindowManager] Settings window preload path:', settingsPreloadPath);
+
+    // Check if files exist
+    const fs = require('fs');
+    console.log('[WindowManager] HTML file exists:', fs.existsSync(settingsHtmlPath));
+    console.log('[WindowManager] Preload file exists:', fs.existsSync(settingsPreloadPath));
+
+    await settingsWindow.loadFile(settingsHtmlPath);
 
     // Attempt restore
     try { windowStateService.restoreWindowState('settings', settingsWindow); } catch {}
@@ -684,7 +720,7 @@ async function createSettingsWindow() {
     settingsWindow.on('closed', () => {
         windowPool.delete('settings');
     });
-    
+
     // Add show event for focus
     settingsWindow.on('show', () => {
         console.log('[WindowManager] Settings window shown');
@@ -692,6 +728,19 @@ async function createSettingsWindow() {
             settingsWindow.setAlwaysOnTop(true, 'screen-saver');
         }
         settingsWindow.focus();
+    });
+
+    // Add event listeners for debugging
+    settingsWindow.on('ready-to-show', () => {
+        console.log('[WindowManager] Settings window ready to show');
+    });
+
+    settingsWindow.webContents.on('did-finish-load', () => {
+        console.log('[WindowManager] Settings window HTML loaded');
+    });
+
+    settingsWindow.webContents.on('console-message', (event, level, message) => {
+        console.log(`[Settings Console] ${message}`);
     });
     
     // DevTools in development

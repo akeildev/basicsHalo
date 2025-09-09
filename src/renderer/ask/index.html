@@ -8,40 +8,17 @@
 </head>
 <body>
     <div class="ask-container">
-        <div class="ask-header">
-            <div class="title">Ask Halo</div>
-            <div class="header-controls">
-                <button id="screenshotBtn" class="screenshot-btn" title="Capture Screenshot">
-                    📷
-                </button>
-                <select id="modelSelect" class="model-select">
-                    <option value="gpt-4">GPT-4</option>
-                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                    <option value="gemini-pro">Gemini Pro</option>
-                </select>
-            </div>
+        <!-- Single response panel (hidden until first response) -->
+        <div id="responsePanel" class="response-panel" style="display: none;">
+            <div id="responseContent" class="markdown-body"></div>
         </div>
-        
-        <div class="chat-container">
-            <div class="messages" id="messages">
-                <div class="message assistant welcome">
-                    <div class="message-content">
-                        <div class="message-text">Hello! I'm Halo, your AI assistant. How can I help you today?</div>
-                        <div class="message-time">Just now</div>
-                    </div>
-                </div>
-            </div>
+
+        <!-- Minimal controls under response -->
+        <div class="ask-controls">
+            <button id="historyToggle" class="history-btn" style="display: none;">History</button>
         </div>
-        
-        <!-- Screenshot Preview Area -->
-        <div id="screenshotPreview" class="screenshot-preview" style="display: none;">
-            <div class="screenshot-header">
-                <span>Screenshot Captured</span>
-                <button id="removeScreenshot" class="remove-btn">×</button>
-            </div>
-            <img id="screenshotImage" class="screenshot-image" />
-        </div>
-        
+
+        <!-- Input area (initially the only visible UI) -->
         <div class="input-container">
             <div class="input-wrapper">
                 <textarea 

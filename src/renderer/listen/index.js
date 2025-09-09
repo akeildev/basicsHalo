@@ -1,14 +1,16 @@
-const { ipcRenderer } = require('electron');
+// Using window.electronAPI from preload script since contextIsolation is enabled
 
 class ListenWindow {
     constructor() {
         this.isListening = false;
         this.transcriptHistory = [];
         this.audioVisualizer = null;
+        this.mediaCapture = null;
         this.initializeElements();
         this.setupEventListeners();
         this.setupIPCListeners();
         this.initializeAudioVisualizer();
+        this.initializeMediaCapture();
     }
 
     initializeElements() {
@@ -67,26 +69,44 @@ class ListenWindow {
 
     async startListening() {
         try {
-            const result = await ipcRenderer.invoke('listen:start');
+            console.log('[Listen] Starting listening...');
+            
+            // Start main process listening (system audio)
+            const result = await window.electronAPI.startListening();
+            console.log('[Listen] Start result:', result);
+            
             if (result.success) {
                 this.updateListeningStatus(true);
+                
+                // Also start media capture in renderer (microphone)
+                await this.startMediaCapture();
             } else {
                 this.showError(result.error);
             }
         } catch (error) {
+            console.error('[Listen] Start error:', error);
             this.showError('Failed to start listening: ' + error.message);
         }
     }
 
     async stopListening() {
         try {
-            const result = await ipcRenderer.invoke('listen:stop');
+            console.log('[Listen] Stopping listening...');
+            
+            // Stop media capture in renderer
+            await this.stopMediaCapture();
+            
+            // Stop main process listening
+            const result = await window.electronAPI.stopListening();
+            console.log('[Listen] Stop result:', result);
+            
             if (result.success) {
                 this.updateListeningStatus(false);
             } else {
                 this.showError(result.error);
             }
         } catch (error) {
+            console.error('[Listen] Stop error:', error);
             this.showError('Failed to stop listening: ' + error.message);
         }
     }
@@ -193,12 +213,55 @@ class ListenWindow {
         // Window lost focus
     }
 
+    initializeMediaCapture() {
+        // Dynamically import the media capture module
+        import('./mediaCaptureRenderer.js').then(module => {
+            const MediaCaptureRenderer = module.default || module;
+            this.mediaCapture = new MediaCaptureRenderer();
+            console.log('[Listen] Media capture initialized');
+        }).catch(error => {
+            console.error('[Listen] Failed to initialize media capture:', error);
+        });
+    }
+
+    async startMediaCapture() {
+        if (!this.mediaCapture) {
+            console.warn('[Listen] Media capture not initialized');
+            return;
+        }
+
+        try {
+            // Start microphone capture in renderer
+            const micResult = await this.mediaCapture.startMicrophoneCapture();
+            if (micResult.success) {
+                console.log('[Listen] Microphone capture started in renderer');
+            }
+            
+            // Optionally start screen capture
+            // const screenResult = await this.mediaCapture.startScreenCapture();
+            
+        } catch (error) {
+            console.error('[Listen] Error starting media capture:', error);
+        }
+    }
+
+    async stopMediaCapture() {
+        if (!this.mediaCapture) return;
+
+        try {
+            this.mediaCapture.stopMicrophoneCapture();
+            this.mediaCapture.stopScreenCapture();
+            console.log('[Listen] Media capture stopped');
+        } catch (error) {
+            console.error('[Listen] Error stopping media capture:', error);
+        }
+    }
+
     handleWindowClose() {
         // Clean up resources
-        ipcRenderer.removeAllListeners('listen:status');
-        ipcRenderer.removeAllListeners('listen:transcript');
-        ipcRenderer.removeAllListeners('listen:error');
-        ipcRenderer.removeAllListeners('listen:audioLevel');
+        if (this.mediaCapture) {
+            this.mediaCapture.cleanup();
+        }
     }
 }
 

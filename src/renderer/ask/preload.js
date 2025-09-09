@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Window management
     showWindow: (windowName) => ipcRenderer.invoke('window:show', windowName),
     hideWindow: (windowName) => ipcRenderer.invoke('window:hide', windowName),
+    getBounds: (name) => ipcRenderer.invoke('window:getBounds', { name }),
+    setBounds: (name, bounds) => ipcRenderer.invoke('window:setBounds', { name, bounds }),
     
     // Ask functionality
     askQuestion: (question, options) => ipcRenderer.invoke('ask:question', question, options),

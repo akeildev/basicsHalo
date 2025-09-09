@@ -311,8 +311,14 @@ class PlatformAudioCapture extends EventEmitter {
                     const chunk = audioData.slice(0, chunkSize);
                     audioData = audioData.slice(chunkSize);
                     
+                    // Convert Buffer to Float32Array
+                    const floatArray = new Float32Array(chunk.length / 4);
+                    for (let i = 0; i < floatArray.length; i++) {
+                        floatArray[i] = chunk.readFloatLE(i * 4);
+                    }
+                    
                     if (this.captureState.audioCallback) {
-                        this.captureState.audioCallback(chunk);
+                        this.captureState.audioCallback(floatArray);
                     }
                 }
             });
@@ -373,8 +379,14 @@ class PlatformAudioCapture extends EventEmitter {
                     const chunk = audioData.slice(0, chunkSize);
                     audioData = audioData.slice(chunkSize);
                     
+                    // Convert Buffer to Float32Array
+                    const floatArray = new Float32Array(chunk.length / 4);
+                    for (let i = 0; i < floatArray.length; i++) {
+                        floatArray[i] = chunk.readFloatLE(i * 4);
+                    }
+                    
                     if (this.captureState.audioCallback) {
-                        this.captureState.audioCallback(chunk);
+                        this.captureState.audioCallback(floatArray);
                     }
                 }
             });
@@ -461,8 +473,14 @@ class PlatformAudioCapture extends EventEmitter {
                     const chunk = audioData.slice(0, chunkSize);
                     audioData = audioData.slice(chunkSize);
                     
+                    // Convert Buffer to Float32Array
+                    const floatArray = new Float32Array(chunk.length / 4);
+                    for (let i = 0; i < floatArray.length; i++) {
+                        floatArray[i] = chunk.readFloatLE(i * 4);
+                    }
+                    
                     if (this.captureState.audioCallback) {
-                        this.captureState.audioCallback(chunk);
+                        this.captureState.audioCallback(floatArray);
                     }
                 }
             });
@@ -522,8 +540,14 @@ class PlatformAudioCapture extends EventEmitter {
                     const chunk = audioData.slice(0, chunkSize);
                     audioData = audioData.slice(chunkSize);
                     
+                    // Convert Buffer to Float32Array
+                    const floatArray = new Float32Array(chunk.length / 4);
+                    for (let i = 0; i < floatArray.length; i++) {
+                        floatArray[i] = chunk.readFloatLE(i * 4);
+                    }
+                    
                     if (this.captureState.audioCallback) {
-                        this.captureState.audioCallback(chunk);
+                        this.captureState.audioCallback(floatArray);
                     }
                 }
             });
@@ -601,8 +625,14 @@ class PlatformAudioCapture extends EventEmitter {
                     const chunk = audioData.slice(0, chunkSize);
                     audioData = audioData.slice(chunkSize);
                     
+                    // Convert Buffer to Float32Array
+                    const floatArray = new Float32Array(chunk.length / 4);
+                    for (let i = 0; i < floatArray.length; i++) {
+                        floatArray[i] = chunk.readFloatLE(i * 4);
+                    }
+                    
                     if (this.captureState.audioCallback) {
-                        this.captureState.audioCallback(chunk);
+                        this.captureState.audioCallback(floatArray);
                     }
                 }
             });

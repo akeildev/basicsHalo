@@ -1,3 +1,4 @@
+const { ipcMain } = require('electron');
 const permissionService = require('./services/permissionService');
 const listenCapture = require('./services/listenCapture');
 const platformAudioCapture = require('./services/platformAudioCapture');
@@ -43,6 +44,9 @@ class ListenService {
             
             // Set up callbacks
             this.setupCallbacks();
+            
+            // Set up IPC handlers for capture window
+            this.setupCaptureIPCHandlers();
             
             this.isInitialized = true;
             console.log('[ListenService] Initialization complete');
@@ -259,10 +263,44 @@ class ListenService {
         });
         
         this.capture.setAudioCallback('onSystemAudioData', (data) => {
-            this.processor.processSystemAudio(data.samples);
+            this.processor.processSystemAudio(data);
         });
         
         this.capture.setAudioCallback('onError', (error) => {
+            this.notifyError(error);
+        });
+    }
+
+    /**
+     * Set up IPC handlers for capture window
+     */
+    setupCaptureIPCHandlers() {
+        // Handle audio data from capture window
+        ipcMain.on('capture:audio-data', (event, { type, data }) => {
+            if (!this.isListening) return;
+            
+            try {
+                const floatArray = new Float32Array(data);
+                
+                if (type === 'microphone') {
+                    this.processor.processMicrophoneAudio(floatArray);
+                } else if (type === 'screen') {
+                    // Process screen audio if needed
+                    console.log('[ListenService] Received screen audio data');
+                }
+            } catch (error) {
+                console.error('[ListenService] Error processing capture audio:', error);
+            }
+        });
+        
+        // Handle capture status updates
+        ipcMain.on('capture:status', (event, status) => {
+            console.log('[ListenService] Capture status update:', status);
+        });
+        
+        // Handle capture errors
+        ipcMain.on('capture:error', (event, error) => {
+            console.error('[ListenService] Capture error:', error);
             this.notifyError(error);
         });
     }

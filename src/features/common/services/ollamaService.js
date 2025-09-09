@@ -45,6 +45,49 @@ class OllamaService {
     isConnected() {
         return this.isConnected;
     }
+
+    /**
+     * Wait for service to be available with retry logic
+     */
+    async waitForService(checkFn, maxAttempts = 30, delayMs = 1000) {
+        for (let i = 0; i < maxAttempts; i++) {
+            if (await checkFn()) {
+                console.log(`[${this.constructor.name}] Service is ready`);
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+        throw new Error(`${this.constructor.name} service failed to start within timeout`);
+    }
+
+    /**
+     * Execute function with exponential backoff retry
+     */
+    async withExponentialBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+        let lastError;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (error) {
+                lastError = error;
+                
+                // Don't retry on certain errors
+                if (error.code === 401 || error.code === 403) {
+                    throw error;
+                }
+                
+                // Calculate delay with exponential backoff
+                const delay = baseDelay * Math.pow(2, attempt);
+                const jitter = Math.random() * delay * 0.1; // Add 10% jitter
+                
+                console.log(`Attempt ${attempt + 1} failed, retrying in ${delay + jitter}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay + jitter));
+            }
+        }
+        
+        throw lastError;
+    }
 }
 
 module.exports = new OllamaService();

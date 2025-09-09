@@ -1,4 +1,6 @@
 const desktopCaptureService = require('./services/desktopCaptureService');
+const { createStreamingLLM } = require('../common/ai/providers/openai');
+const settingsService = require('../settings/settingsService');
 
 class AskService {
     constructor() {
@@ -12,6 +14,19 @@ class AskService {
         // Processing state
         this.processingHistory = [];
         this.maxHistorySize = 100;
+        
+        // Streaming state
+        this.state = {
+            isVisible: false,
+            isLoading: false,
+            isStreaming: false,
+            currentQuestion: '',
+            currentResponse: '',
+            showTextInput: true
+        };
+        
+        // Abort controller for streaming
+        this.abortController = null;
     }
 
     /**
@@ -116,25 +131,104 @@ class AskService {
     }
 
     /**
-     * Process the question with AI (simulated)
+     * Process the question with AI
      */
     async _processQuestion(question, screenshot, options) {
-        // Simulate AI processing time
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-        
-        // Simulate different responses based on content
-        let answer = `This is a simulated response to: "${question}"`;
-        
-        if (screenshot) {
-            answer += `\n\nI can see a screenshot (${screenshot.width}x${screenshot.height}) from ${screenshot.source.name}. `;
-            answer += `The image appears to be captured at ${new Date(screenshot.metadata.timestamp).toLocaleTimeString()}.`;
+        try {
+            // Get API key from settings
+            const settings = await settingsService.getSettings();
+            const apiKey = settings.openaiApiKey;
+            
+            if (!apiKey || !apiKey.startsWith('sk-')) {
+                console.error('[AskService] No valid OpenAI API key found in settings');
+                return 'Please configure your OpenAI API key in Settings to use AI features.';
+            }
+            
+            console.log('[AskService] Using OpenAI API with key:', apiKey.substring(0, 7) + '...');
+            
+            // Prepare messages for OpenAI
+            let messages;
+            if (screenshot) {
+                // Use vision model for screenshot analysis
+                messages = [
+                    { role: 'system', content: 'You are a helpful AI assistant that can analyze screenshots and answer questions about what you see.' },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: question },
+                            { 
+                                type: 'image_url', 
+                                image_url: { 
+                                    url: `data:image/jpeg;base64,${screenshot.base64}`,
+                                    detail: 'auto'
+                                } 
+                            }
+                        ]
+                    }
+                ];
+            } else {
+                // Text-only query
+                messages = [
+                    { role: 'system', content: 'You are a helpful AI assistant.' },
+                    { role: 'user', content: question }
+                ];
+            }
+            
+            // Use the appropriate model
+            const model = screenshot ? 'gpt-4o' : (options.model || 'gpt-4o');
+            
+            // Create streaming LLM and get response
+            const streamingLLM = createStreamingLLM({ 
+                apiKey, 
+                model,
+                temperature: options.temperature || 0.7,
+                maxTokens: options.maxTokens || 2048
+            });
+            
+            const response = await streamingLLM.streamChat(messages);
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = '';
+            
+            // Read the stream
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(l => l.trim() !== '');
+                
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const data = line.slice(6);
+                    if (data === '[DONE]') break;
+                    
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullResponse += token;
+                        }
+                    } catch (e) {
+                        // Ignore partial JSON
+                    }
+                }
+            }
+            
+            console.log('[AskService] AI response received, length:', fullResponse.length);
+            return fullResponse || 'No response received from AI.';
+            
+        } catch (error) {
+            console.error('[AskService] Error processing with AI:', error);
+            
+            // Check if it's a vision model error and retry with text-only
+            if (screenshot && error.message?.includes('vision')) {
+                console.log('[AskService] Vision model failed, retrying with text-only...');
+                return this._processQuestion(question, null, options);
+            }
+            
+            return `Error: ${error.message || 'Failed to process your question with AI.'}`;
         }
-        
-        if (question.toLowerCase().includes('screenshot') || question.toLowerCase().includes('screen')) {
-            answer += `\n\nI can help you analyze what's on your screen. The screenshot shows your current desktop state.`;
-        }
-        
-        return answer;
     }
 
     /**
@@ -290,6 +384,197 @@ class AskService {
         } catch (error) {
             console.error('[AskService] ❌ Cleanup failed:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Stream a message to an AI model and update internal state as tokens arrive
+     */
+    async sendMessage(userPrompt, opts = {}) {
+        // Get API key from settings if not provided
+        const settings = await settingsService.getSettings();
+        const {
+            apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY || '',
+            model = 'gpt-4-turbo-preview',
+            temperature = 0.7,
+            maxTokens = 2048,
+            includeScreenshot = false
+        } = opts;
+
+        if (!apiKey || !apiKey.startsWith('sk-')) {
+            console.error('[AskService] Invalid or missing OpenAI API key');
+            throw new Error('Please configure your OpenAI API key in Settings.');
+        }
+        
+        console.log('[AskService] Sending message with API key:', apiKey.substring(0, 7) + '...');
+
+        // Cancel any ongoing stream
+        if (this.abortController) {
+            try { this.abortController.abort('Starting new request'); } catch (_) {}
+        }
+        this.abortController = new AbortController();
+        const { signal } = this.abortController;
+
+        // Reset and broadcast state
+        this.state.isVisible = true;
+        this.state.isLoading = true;
+        this.state.isStreaming = false;
+        this.state.currentQuestion = userPrompt;
+        this.state.currentResponse = '';
+        this.state.showTextInput = false;
+        this._broadcastState();
+
+        // Optional screenshot for multimodal
+        let messages;
+        if (includeScreenshot) {
+            try {
+                const captureResult = await this.desktopCapture.captureScreenshot({ quality: 70, maxWidth: 1280, maxHeight: 720 });
+                if (captureResult?.success && captureResult.base64) {
+                    messages = [
+                        { role: 'system', content: 'You are a helpful AI assistant that can analyze screenshots and answer questions about what you see.' },
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: userPrompt },
+                                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${captureResult.base64}` } }
+                            ]
+                        }
+                    ];
+                }
+            } catch (e) {
+                console.warn('[AskService] Screenshot unavailable, continuing text-only:', e.message);
+            }
+        }
+        if (!messages) {
+            messages = [
+                { role: 'system', content: 'You are a helpful assistant.' },
+                { role: 'user', content: userPrompt }
+            ];
+        }
+
+        // Create streaming LLM
+        const streamingLLM = createStreamingLLM({ apiKey, model, temperature, maxTokens });
+
+        try {
+            const response = await streamingLLM.streamChat(messages);
+            const reader = response.body.getReader();
+
+            // Handle aborts
+            signal.addEventListener('abort', () => {
+                try { reader.cancel(signal.reason); } catch (_) {}
+            });
+
+            await this._processStream(reader, signal);
+            return { success: true, response: this.state.currentResponse };
+        } catch (error) {
+            // End state on error
+            this.state.isLoading = false;
+            this.state.isStreaming = false;
+            this.state.showTextInput = true;
+            this._broadcastState();
+            console.error('[AskService] Streaming error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Process an SSE streaming response
+     */
+    async _processStream(reader, signal) {
+        const decoder = new TextDecoder();
+        let fullResponse = '';
+        this.state.isLoading = false;
+        this.state.isStreaming = true;
+        this._broadcastState();
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(l => l.trim() !== '');
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                        break;
+                    }
+                    try {
+                        const json = JSON.parse(data);
+                        const token = json.choices?.[0]?.delta?.content || '';
+                        if (token) {
+                            fullResponse += token;
+                            this.state.currentResponse = fullResponse;
+                            this._broadcastState();
+                        }
+                    } catch (_) {
+                        // ignore partial JSON
+                    }
+                }
+            }
+        } catch (err) {
+            if (signal.aborted) {
+                console.log('[AskService] Stream aborted:', signal.reason);
+            } else {
+                console.error('[AskService] Stream processing error:', err);
+            }
+        } finally {
+            this.state.isStreaming = false;
+            this.state.isLoading = false;
+            this.state.showTextInput = true;
+            this._broadcastState();
+        }
+    }
+
+    /** Stop current streaming response if active */
+    stopStreaming(reason = 'User cancelled') {
+        if (this.abortController) {
+            try { this.abortController.abort(reason); } catch (_) {}
+        }
+    }
+
+    /** Placeholder for state updates (wire to IPC/UI as needed) */
+    _broadcastState() {
+        // In this codebase, we simply log. Hook into IPC/UI where applicable.
+        try {
+            console.log('[AskService] State:', JSON.stringify(this.state));
+        } catch (_) {}
+    }
+
+    /**
+     * Determine if error is multimodal-related
+     * @private
+     */
+    _isMultimodalError(error) {
+        const errorMessage = error.message?.toLowerCase() || '';
+        return (
+            errorMessage.includes('vision') ||
+            errorMessage.includes('image') ||
+            errorMessage.includes('multimodal') ||
+            errorMessage.includes('unsupported') ||
+            errorMessage.includes('image_url') ||
+            errorMessage.includes('400') ||  // Bad Request often for unsupported features
+            errorMessage.includes('invalid') ||
+            errorMessage.includes('not supported')
+        );
+    }
+
+    /**
+     * Send message with multimodal fallback on error
+     */
+    async sendMessageWithFallback(userPrompt, opts = {}) {
+        const { includeScreenshot = false, ...restOpts } = opts;
+        
+        try {
+            return await this.sendMessage(userPrompt, { ...restOpts, includeScreenshot });
+        } catch (error) {
+            // If multimodal request failed and screenshot was included, retry with text-only
+            if (includeScreenshot && this._isMultimodalError(error)) {
+                console.log(`[AskService] Multimodal request failed, retrying with text-only: ${error.message}`);
+                return await this.sendMessage(userPrompt, { ...restOpts, includeScreenshot: false });
+            } else {
+                throw error;
+            }
         }
     }
 }
