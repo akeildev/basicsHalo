@@ -1,0 +1,15 @@
+#!/bin/bash
+# SystemAudioDump - macOS system audio capture binary placeholder
+# This is a placeholder script that simulates the SystemAudioDump binary
+# In a real implementation, this would be a compiled binary for macOS system audio capture
+
+echo "SystemAudioDump placeholder - macOS system audio capture" >&2
+echo "This would capture system audio and output raw audio data to stdout" >&2
+
+# Simulate audio data output (in real implementation, this would be actual audio)
+# For testing purposes, output some dummy data
+while true; do
+    # Generate 1 second of dummy audio data (24000 samples * 2 bytes per sample)
+    dd if=/dev/zero bs=48000 count=1 2>/dev/null
+    sleep 1
+done

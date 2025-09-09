@@ -11,6 +11,11 @@ class WindowBridge extends EventEmitter {
         this.setupDefaultHandlers();
     }
 
+    initialize() {
+        // Handlers are registered in constructor; keep for API compatibility
+        return true;
+    }
+
     setupIPC() {
         // Window lifecycle events
         ipcMain.handle('window:requestVisibility', this.handleRequestVisibility.bind(this));
@@ -129,6 +134,9 @@ class WindowBridge extends EventEmitter {
 
             this.emit('window:visibilityChanged', { name, visible, windowId: event.sender.id });
             
+            // Broadcast to all windows so they can update their UI
+            this.broadcast('window:visibilityChanged', { name, visible });
+            
             return { success: true, visible };
         } catch (error) {
             console.error('[WindowBridge] Visibility request error:', error);
@@ -147,31 +155,19 @@ class WindowBridge extends EventEmitter {
                 throw new Error('Header window not found');
             }
 
-            const [x, y] = window.getPosition();
-            let newX = x, newY = y;
-
-            switch (direction) {
-                case 'up':
-                    newY = Math.max(0, y - distance);
-                    break;
-                case 'down':
-                    newY = y + distance;
-                    break;
-                case 'left':
-                    newX = Math.max(0, x - distance);
-                    break;
-                case 'right':
-                    newX = x + distance;
-                    break;
-                default:
-                    throw new Error(`Invalid direction: ${direction}`);
+            // Use layout manager for intelligent positioning if available
+            const WindowLayoutManager = require('../window/windowLayoutManager');
+            const layoutManager = new WindowLayoutManager();
+            layoutManager.setWindowPool(this.windowPool);
+            
+            const newPosition = layoutManager.calculateStepMovePosition(window, direction);
+            if (newPosition) {
+                window.setPosition(newPosition.x, newPosition.y);
+                this.emit('window:moved', { direction, distance, position: [newPosition.x, newPosition.y] });
+                return { success: true, position: [newPosition.x, newPosition.y] };
+            } else {
+                throw new Error('Unable to calculate new position');
             }
-
-            window.setPosition(newX, newY);
-            
-            this.emit('window:moved', { direction, distance, position: [newX, newY] });
-            
-            return { success: true, position: [newX, newY] };
         } catch (error) {
             console.error('[WindowBridge] Move step error:', error);
             return { success: false, error: error.message };
@@ -189,11 +185,23 @@ class WindowBridge extends EventEmitter {
             }
 
             this.validateDimensions(width, height);
-            window.setSize(width, height);
             
-            this.emit('window:resized', { name: 'header', width, height });
+            // Use layout manager for intelligent resizing that keeps window centered
+            const WindowLayoutManager = require('../window/windowLayoutManager');
+            const layoutManager = new WindowLayoutManager();
+            layoutManager.setWindowPool(this.windowPool);
             
-            return { success: true, size: { width, height } };
+            const newBounds = layoutManager.calculateHeaderResize(window, { width, height });
+            if (newBounds) {
+                window.setBounds(newBounds);
+                this.emit('window:resized', { name: 'header', width, height });
+                return { success: true, size: { width, height } };
+            } else {
+                // Fallback to simple resize
+                window.setSize(width, height);
+                this.emit('window:resized', { name: 'header', width, height });
+                return { success: true, size: { width, height } };
+            }
         } catch (error) {
             console.error('[WindowBridge] Resize header error:', error);
             return { success: false, error: error.message };

@@ -9,6 +9,11 @@ class FeatureBridge extends EventEmitter {
         this.setupDefaultHandlers();
     }
 
+    initialize() {
+        // Handlers are registered in constructor; keep for API compatibility
+        return true;
+    }
+
     setupIPC() {
         // Listen for feature-specific messages
         ipcMain.handle('listen:start', this.handleListenStart.bind(this));
@@ -18,6 +23,10 @@ class FeatureBridge extends EventEmitter {
         ipcMain.handle('ask:prompt', this.handleAskPrompt.bind(this));
         ipcMain.handle('ask:stream', this.handleAskStream.bind(this));
         ipcMain.handle('ask:history', this.handleAskHistory.bind(this));
+        
+        // Desktop capture handlers
+        ipcMain.handle('ask:captureScreenshot', this.handleAskCaptureScreenshot.bind(this));
+        ipcMain.handle('ask:getSources', this.handleAskGetSources.bind(this));
         
         ipcMain.handle('settings:update', this.handleSettingsUpdate.bind(this));
         ipcMain.handle('settings:get', this.handleSettingsGet.bind(this));
@@ -34,6 +43,8 @@ class FeatureBridge extends EventEmitter {
         this.messageHandlers.set('listen:start', this.defaultListenStart);
         this.messageHandlers.set('listen:stop', this.defaultListenStop);
         this.messageHandlers.set('ask:prompt', this.defaultAskPrompt);
+        this.messageHandlers.set('ask:captureScreenshot', this.defaultAskCaptureScreenshot);
+        this.messageHandlers.set('ask:getSources', this.defaultAskGetSources);
         this.messageHandlers.set('settings:update', this.defaultSettingsUpdate);
     }
 
@@ -124,6 +135,30 @@ class FeatureBridge extends EventEmitter {
         } catch (error) {
             console.error('[FeatureBridge] Ask history error:', error);
             return { success: false, error: error.message };
+        }
+    }
+
+    async handleAskCaptureScreenshot(event, options = {}) {
+        try {
+            console.log('[FeatureBridge] Ask capture screenshot requested:', options);
+            const handler = this.messageHandlers.get('ask:captureScreenshot');
+            const result = await handler(options);
+            return result;
+        } catch (error) {
+            console.error('[FeatureBridge] Ask capture screenshot error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async handleAskGetSources(event, options = {}) {
+        try {
+            console.log('[FeatureBridge] Ask get sources requested:', options);
+            const handler = this.messageHandlers.get('ask:getSources');
+            const result = await handler(options);
+            return result;
+        } catch (error) {
+            console.error('[FeatureBridge] Ask get sources error:', error);
+            return { success: false, error: error.message, sources: [] };
         }
     }
 
@@ -241,6 +276,16 @@ class FeatureBridge extends EventEmitter {
         return { message: 'Ask service not initialized' };
     };
 
+    defaultAskCaptureScreenshot = async (options) => {
+        console.log('[FeatureBridge] Default ask capture screenshot handler');
+        return { success: false, error: 'Desktop capture service not available' };
+    };
+
+    defaultAskGetSources = async (options) => {
+        console.log('[FeatureBridge] Default ask get sources handler');
+        return { success: false, error: 'Desktop capture service not available', sources: [] };
+    };
+
     defaultSettingsUpdate = async (data) => {
         console.log('[FeatureBridge] Default settings update handler');
         return { message: 'Settings service not initialized' };
@@ -255,6 +300,8 @@ class FeatureBridge extends EventEmitter {
         ipcMain.removeAllListeners('ask:prompt');
         ipcMain.removeAllListeners('ask:stream');
         ipcMain.removeAllListeners('ask:history');
+        ipcMain.removeAllListeners('ask:captureScreenshot');
+        ipcMain.removeAllListeners('ask:getSources');
         ipcMain.removeAllListeners('settings:update');
         ipcMain.removeAllListeners('settings:get');
         ipcMain.removeAllListeners('settings:reset');

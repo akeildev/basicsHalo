@@ -26,6 +26,7 @@ const modelStateService = require('./features/common/services/modelStateService'
 const ollamaService = require('./features/common/services/ollamaService');
 const settingsService = require('./features/settings/settingsService');
 const askService = require('./features/ask/askService');
+const AskServiceWrapper = require('./features/ask/AskServiceWrapper');
 const listenService = require('./features/listen/listenService');
 
 // Create a wrapper for existing services
@@ -135,6 +136,14 @@ function registerServices() {
     serviceRegistry.register('OllamaService', new OllamaServiceWrapper(), {
         isCritical: false,
         initPriority: 60,
+        metadata: { autoStart: true }
+    });
+    
+    // Register Ask service
+    serviceRegistry.register('AskService', new AskServiceWrapper(), {
+        isCritical: false,
+        initPriority: 65,
+        dependencies: ['DatabaseService'],
         metadata: { autoStart: true }
     });
     

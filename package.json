@@ -33,7 +33,20 @@
     "build:renderer": "node build.js",
     "build:web": "cd halo_web && npm run build && cd ..",
     "build:all": "npm run build:renderer && npm run build:web",
-    "watch:renderer": "node build.js --watch"
+    "watch:renderer": "node build.js --watch",
+    "test:screen-capture": "node scripts/run-screen-capture-tests.js",
+    "test:screen-capture:verbose": "node scripts/run-screen-capture-tests.js --verbose",
+    "test:screen-capture:permissions": "node scripts/run-screen-capture-tests.js --suites permissions",
+    "test:screen-capture:capture": "node scripts/run-screen-capture-tests.js --suites capture",
+    "test:screen-capture:audio": "node scripts/run-screen-capture-tests.js --suites audioProcessing",
+    "test:screen-capture:performance": "node scripts/run-screen-capture-tests.js --suites performance",
+    "test:screen-capture:platform": "node scripts/run-screen-capture-tests.js --suites platform",
+    "test:screen-capture:errors": "node scripts/run-screen-capture-tests.js --suites errorHandling",
+    "test:screen-capture:integration": "node scripts/run-screen-capture-tests.js --suites integration",
+    "test:screen-capture:desktop": "node scripts/run-screen-capture-tests.js --suites desktopCapture",
+    "test:ask": "node scripts/run-screen-capture-tests.js --suites desktopCapture",
+    "test:ask:integration": "node scripts/run-screen-capture-tests.js --suites askIntegration",
+    "test:ask:all": "node scripts/run-screen-capture-tests.js --suites desktopCapture,askIntegration"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",

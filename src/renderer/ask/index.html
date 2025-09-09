@@ -10,7 +10,10 @@
     <div class="ask-container">
         <div class="ask-header">
             <div class="title">Ask Halo</div>
-            <div class="model-selector">
+            <div class="header-controls">
+                <button id="screenshotBtn" class="screenshot-btn" title="Capture Screenshot">
+                    📷
+                </button>
                 <select id="modelSelect" class="model-select">
                     <option value="gpt-4">GPT-4</option>
                     <option value="claude-3-sonnet">Claude 3 Sonnet</option>
@@ -28,6 +31,15 @@
                     </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- Screenshot Preview Area -->
+        <div id="screenshotPreview" class="screenshot-preview" style="display: none;">
+            <div class="screenshot-header">
+                <span>Screenshot Captured</span>
+                <button id="removeScreenshot" class="remove-btn">×</button>
+            </div>
+            <img id="screenshotImage" class="screenshot-image" />
         </div>
         
         <div class="input-container">

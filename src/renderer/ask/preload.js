@@ -6,18 +6,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hideWindow: (windowName) => ipcRenderer.invoke('window:hide', windowName),
     
     // Ask functionality
-    askQuestion: (question) => ipcRenderer.invoke('feature:askQuestion', question),
-    getAvailableModels: () => ipcRenderer.invoke('feature:getAvailableModels'),
-    setCurrentModel: (model) => ipcRenderer.invoke('feature:setCurrentModel', model),
-    getCurrentModel: () => ipcRenderer.invoke('feature:getCurrentModel'),
+    askQuestion: (question, options) => ipcRenderer.invoke('ask:question', question, options),
+    setModel: (model) => ipcRenderer.invoke('ask:setModel', model),
+    getModel: () => ipcRenderer.invoke('ask:getModel'),
+    isProcessing: () => ipcRenderer.invoke('ask:isProcessing'),
     
-    // Chat history
-    getChatHistory: () => ipcRenderer.invoke('feature:getChatHistory'),
-    clearChatHistory: () => ipcRenderer.invoke('feature:clearChatHistory'),
+    // Processing history
+    getHistory: (limit) => ipcRenderer.invoke('ask:getHistory', limit),
+    clearHistory: () => ipcRenderer.invoke('ask:clearHistory'),
+    
+    // Service status and metrics
+    getStatus: () => ipcRenderer.invoke('ask:getStatus'),
+    getMetrics: () => ipcRenderer.invoke('ask:getMetrics'),
+    
+    // Desktop capture functionality
+    captureScreenshot: (options) => ipcRenderer.invoke('ask:captureScreenshot', options),
+    getSources: (options) => ipcRenderer.invoke('ask:getSources', options),
+    setupDisplayMediaHandler: () => ipcRenderer.invoke('ask:setupDisplayMediaHandler'),
+    updateCaptureConfig: (config) => ipcRenderer.invoke('ask:updateCaptureConfig', config),
+    getCaptureMetrics: () => ipcRenderer.invoke('ask:getCaptureMetrics'),
+    resetCaptureMetrics: () => ipcRenderer.invoke('ask:resetCaptureMetrics'),
     
     // Events
-    onAnswerUpdate: (callback) => ipcRenderer.on('answer:update', callback),
-    onModelChange: (callback) => ipcRenderer.on('model:change', callback),
+    onScreenshotCaptured: (callback) => ipcRenderer.on('ask:screenshotCaptured', callback),
+    onError: (callback) => ipcRenderer.on('ask:error', callback),
+    onConfigUpdated: (callback) => ipcRenderer.on('ask:configUpdated', callback),
     
     // Remove listeners
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)

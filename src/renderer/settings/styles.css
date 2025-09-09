@@ -6,7 +6,7 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    background: transparent;
     color: white;
     overflow: hidden;
     user-select: none;
@@ -16,28 +16,37 @@ body {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 20px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
 .settings-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .title {
-    font-size: 24px;
+    font-size: 16px;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
+    opacity: 0.95;
 }
 
 .close-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: none;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.4);
     color: white;
     cursor: pointer;
     display: flex;
@@ -49,8 +58,9 @@ body {
 }
 
 .close-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.6);
     transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .close-btn:active {
@@ -58,35 +68,38 @@ body {
 }
 
 .icon {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     fill: currentColor;
 }
 
 .settings-content {
     flex: 1;
     overflow-y: auto;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
+    min-height: 0;
 }
 
 .settings-section {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(10px);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    padding: 20px;
-    margin-bottom: 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 14px;
+    margin-bottom: 10px;
 }
 
 .section-title {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .setting-item {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .setting-item:last-child {
@@ -95,34 +108,35 @@ body {
 
 .setting-item label {
     display: block;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
-    margin-bottom: 8px;
-    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 6px;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .setting-input,
 .setting-select {
     width: 100%;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
     color: white;
-    padding: 12px;
-    font-size: 14px;
+    padding: 8px 10px;
+    font-size: 12px;
     outline: none;
     transition: all 0.2s ease;
 }
 
 .setting-input:focus,
 .setting-select:focus {
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.5);
 }
 
 .setting-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
 }
 
 .setting-select option {
@@ -137,17 +151,17 @@ body {
 }
 
 .input-group .setting-input {
-    padding-right: 40px;
+    padding-right: 36px;
 }
 
 .toggle-visibility {
     position: absolute;
-    right: 8px;
-    width: 24px;
-    height: 24px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.5);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -156,12 +170,12 @@ body {
 }
 
 .toggle-visibility:hover {
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.8);
 }
 
 .toggle-visibility .icon {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 .checkbox-label {
@@ -169,15 +183,15 @@ body {
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .setting-checkbox {
-    width: 18px;
-    height: 18px;
-    accent-color: #4ade80;
+    width: 16px;
+    height: 16px;
+    accent-color: rgba(74, 222, 128, 0.8);
     cursor: pointer;
 }
 
@@ -187,15 +201,15 @@ body {
 
 .settings-footer {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     justify-content: flex-end;
 }
 
 .btn {
-    padding: 12px 24px;
+    padding: 8px 16px;
     border: none;
-    border-radius: 8px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -204,14 +218,15 @@ body {
 }
 
 .btn.primary {
-    background: linear-gradient(135deg, #4ade80, #22c55e);
+    background: rgba(74, 222, 128, 0.25);
     color: white;
-    border: none;
+    border: 1px solid rgba(74, 222, 128, 0.4);
 }
 
 .btn.primary:hover {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
+    background: rgba(74, 222, 128, 0.35);
     transform: translateY(-1px);
+    border-color: rgba(74, 222, 128, 0.5);
 }
 
 .btn.primary:active {
@@ -219,13 +234,14 @@ body {
 }
 
 .btn.secondary {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.4);
     color: white;
 }
 
 .btn.secondary:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.6);
     transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .btn.secondary:active {
@@ -240,21 +256,21 @@ body {
 
 /* Scrollbar styling */
 .settings-content::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
 }
 
 .settings-content::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
 }
 
 .settings-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
 }
 
 .settings-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.3);
 }
 
 /* Responsive design */

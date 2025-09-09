@@ -17,6 +17,7 @@ if (require('electron-squirrel-startup')) {
 const { app, BrowserWindow, shell, ipcMain, dialog, desktopCapturer, session } = require('electron');
 const { createWindows } = require('./window/windowManager.js');
 const listenService = require('./features/listen/listenService');
+const listenIPCHandlers = require('./features/listen/ipcHandlers');
 const { initializeFirebase } = require('./features/common/services/firebaseClient');
 const databaseInitializer = require('./features/common/services/databaseInitializer');
 const authService = require('./features/common/services/authService');
@@ -26,6 +27,7 @@ const fetch = require('node-fetch');
 const { autoUpdater } = require('electron-updater');
 const { EventEmitter } = require('events');
 const askService = require('./features/ask/askService');
+const askIPCHandlers = require('./features/ask/ipcHandlers');
 const settingsService = require('./features/settings/settingsService');
 const sessionRepository = require('./features/common/repositories/session');
 const modelStateService = require('./features/common/services/modelStateService');
@@ -327,6 +329,11 @@ async function gracefulShutdown() {
         console.log('[Lifecycle] Closing AI connections...');
         await listenService.stopListening();
         await listenService.stopTranscription();
+        await listenService.cleanup();
+        
+        // Cleanup Ask service
+        console.log('[Lifecycle] Cleaning up Ask service...');
+        await askService.cleanup();
         
         // Stop audio recording sessions
         console.log('[Lifecycle] Stopping audio sessions...');
@@ -373,10 +380,94 @@ app.whenReady().then(async () => {
         await createWindows();
         console.log('[Lifecycle] ✅ Windows created');
         
-        // Connect bridges to window pool
+        // Connect and initialize bridges
         const { windowPool } = require('./window/windowManager.js');
         windowBridge.setWindowPool(windowPool);
+        try { windowBridge.initialize(); } catch {}
+        try { (require('./bridge/featureBridge')).initialize(); } catch {}
         console.log('[Lifecycle] ✅ Bridges connected');
+
+        // Initialize Listen Service and IPC handlers
+        try {
+            await listenService.initialize();
+            
+            // Register listen service handlers with featureBridge
+            featureBridge.registerHandler('listen', 'start', async (data) => {
+                return await listenService.startListening(data);
+            });
+            featureBridge.registerHandler('listen', 'stop', async (data) => {
+                return await listenService.stopListening();
+            });
+            featureBridge.registerHandler('listen', 'status', async () => {
+                return listenService.getStatus();
+            });
+            
+            listenIPCHandlers.initialize();
+            console.log('[Lifecycle] ✅ Listen Service initialized');
+        } catch (error) {
+            console.error('[Lifecycle] ❌ Listen Service initialization failed:', error);
+        }
+        
+        // Initialize Ask Service and IPC handlers
+        try {
+            await askService.initialize();
+            
+            // Register ask service handlers with featureBridge
+            featureBridge.registerHandler('ask', 'captureScreenshot', async (options) => {
+                return await askService.captureScreenshot(options);
+            });
+            featureBridge.registerHandler('ask', 'getSources', async (options) => {
+                return await askService.getAvailableSources(options);
+            });
+            
+            askIPCHandlers.initialize();
+            console.log('[Lifecycle] ✅ Ask Service initialized');
+        } catch (error) {
+            console.error('[Lifecycle] ❌ Ask Service initialization failed:', error);
+        }
+        
+        // One-time layout update and periodic state saving
+        try {
+            const { updateChildWindowLayouts } = require('./window/windowManager.js');
+            updateChildWindowLayouts(false);
+        } catch {}
+        
+        try {
+            const windowStateService = require('./services/windowStateService');
+            setInterval(() => {
+                try {
+                    const header = windowPool.get('header');
+                    const ask = windowPool.get('ask');
+                    const listen = windowPool.get('listen');
+                    const settingsWin = windowPool.get('settings');
+                    if (header && !header.isDestroyed()) windowStateService.saveWindowState('header', header);
+                    if (ask && !ask.isDestroyed()) windowStateService.saveWindowState('ask', ask);
+                    if (listen && !listen.isDestroyed()) windowStateService.saveWindowState('listen', listen);
+                    if (settingsWin && !settingsWin.isDestroyed()) windowStateService.saveWindowState('settings', settingsWin);
+                } catch {}
+            }, 30000);
+        } catch {}
+
+        // Dev/CLI: --restore-test prints current bounds of windows after creation
+        try {
+            if (process.argv && process.argv.includes('--restore-test')) {
+                const logBounds = (name) => {
+                    const win = windowPool.get(name);
+                    if (win && !win.isDestroyed()) {
+                        const b = win.getBounds();
+                        console.log(`[RestoreTest] ${name}: x=${b.x} y=${b.y} w=${b.width} h=${b.height} vis=${win.isVisible()}`);
+                    } else {
+                        console.log(`[RestoreTest] ${name}: not available`);
+                    }
+                };
+                console.log('[RestoreTest] --- Window bounds after creation ---');
+                logBounds('header');
+                logBounds('ask');
+                logBounds('listen');
+                logBounds('settings');
+                console.log('[RestoreTest] -----------------------------------');
+            }
+        } catch {}
         
         // Close splash window
         splashService.closeSplash();

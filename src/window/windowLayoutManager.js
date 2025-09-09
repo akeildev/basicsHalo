@@ -1,7 +1,21 @@
+// Helper to get display nearest a window's center
+function getCurrentDisplay(window) {
+    try {
+        const { screen } = require('electron');
+        if (!window || window.isDestroyed()) return screen.getPrimaryDisplay();
+        const b = window.getBounds();
+        const center = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        return screen.getDisplayNearestPoint(center);
+    } catch {
+        return null;
+    }
+}
+
 class WindowLayoutManager {
     constructor() {
         this.screenBounds = null;
         this.windowSpacing = 20;
+        this.windowPool = null; // Will be set by windowManager
         this.updateScreenBounds();
         
         // Listen for screen changes
@@ -9,6 +23,10 @@ class WindowLayoutManager {
         screen.on('display-added', this.updateScreenBounds.bind(this));
         screen.on('display-removed', this.updateScreenBounds.bind(this));
         screen.on('display-metrics-changed', this.updateScreenBounds.bind(this));
+    }
+    
+    setWindowPool(windowPool) {
+        this.windowPool = windowPool;
     }
 
     updateScreenBounds() {
@@ -18,58 +36,177 @@ class WindowLayoutManager {
         console.log('[WindowLayoutManager] Screen bounds:', this.screenBounds);
     }
 
-    calculateFeatureWindowLayout(visibleWindows, headerBounds = null) {
-        this.updateScreenBounds();
-        
-        // Calculate layouts with header position if available
-        const layouts = {
-            listen: this.calculateListenWindowLayout(headerBounds),
-            ask: this.calculateAskWindowLayout(headerBounds),
-            settings: this.calculateSettingsWindowLayout(headerBounds)
-        };
+    // Decide layout strategy based on space around header
+    determineLayoutStrategy(headerBounds, screenWidth, screenHeight, relativeX, relativeY, workAreaX, workAreaY) {
+        const headerRelX = headerBounds.x - workAreaX;
+        const headerRelY = headerBounds.y - workAreaY;
 
-        // Filter to only include visible windows
-        const visibleLayouts = {};
-        Object.keys(visibleWindows).forEach(windowName => {
-            if (layouts[windowName]) {
-                visibleLayouts[windowName] = layouts[windowName];
-            }
-        });
+        const spaceBelow = screenHeight - (headerRelY + headerBounds.height);
+        const spaceAbove = headerRelY;
+        const spaceLeft = headerRelX;
+        const spaceRight = screenWidth - (headerRelX + headerBounds.width);
 
-        return visibleLayouts;
+        if (spaceBelow >= 400) {
+            return { name: 'below', primary: 'below', secondary: relativeX < 0.5 ? 'right' : 'left' };
+        } else if (spaceAbove >= 400) {
+            return { name: 'above', primary: 'above', secondary: relativeX < 0.5 ? 'right' : 'left' };
+        } else if (relativeX < 0.3 && spaceRight >= 800) {
+            return { name: 'right-side', primary: 'right', secondary: spaceBelow > spaceAbove ? 'below' : 'above' };
+        } else if (relativeX > 0.7 && spaceLeft >= 800) {
+            return { name: 'left-side', primary: 'left', secondary: spaceBelow > spaceAbove ? 'below' : 'above' };
+        } else {
+            return { name: 'adaptive', primary: spaceBelow > spaceAbove ? 'below' : 'above', secondary: spaceRight > spaceLeft ? 'right' : 'left' };
+        }
     }
 
-    calculateListenWindowLayout(headerBounds = null) {
+    calculateFeatureWindowLayout(visibility, headerBoundsOverride = null) {
+        this.updateScreenBounds();
+
+        const { screen } = require('electron');
+        const header = this.windowPool && this.windowPool.get ? this.windowPool.get('header') : null;
+        const headerBounds = headerBoundsOverride || (header && !header.isDestroyed() ? header.getBounds() : null);
+        if (!headerBounds) return {};
+
+        // Determine which display/work area to use
+        let display;
+        if (headerBoundsOverride) {
+            const center = { x: headerBounds.x + headerBounds.width / 2, y: headerBounds.y + headerBounds.height / 2 };
+            display = screen.getDisplayNearestPoint(center);
+        } else {
+            display = getCurrentDisplay(header) || screen.getPrimaryDisplay();
+        }
+        const { width: screenWidth, height: screenHeight, x: workAreaX, y: workAreaY } = display.workArea;
+
+        const ask = this.windowPool && this.windowPool.get ? this.windowPool.get('ask') : null;
+        const listen = this.windowPool && this.windowPool.get ? this.windowPool.get('listen') : null;
+
+        const askVis = visibility && visibility.ask && ask && !ask.isDestroyed();
+        const listenVis = visibility && visibility.listen && listen && !listen.isDestroyed();
+        if (!askVis && !listenVis) return {};
+
+        const PAD = 8;
+        const headerCenterXRel = headerBounds.x - workAreaX + headerBounds.width / 2;
+        const relativeX = headerCenterXRel / screenWidth;
+        const relativeY = (headerBounds.y - workAreaY) / screenHeight;
+        const strategy = this.determineLayoutStrategy(headerBounds, screenWidth, screenHeight, relativeX, relativeY, workAreaX, workAreaY);
+
+        const askB = askVis ? ask.getBounds() : null;
+        const listenB = listenVis ? listen.getBounds() : null;
+
+        const layout = {};
+
+        if (askVis && listenVis) {
+            // Start with ask centered under header; listen to the left
+            let askXRel = headerCenterXRel - (askB.width / 2);
+            let listenXRel = askXRel - listenB.width - PAD;
+
+            // Left boundary collision
+            if (listenXRel < PAD) {
+                listenXRel = PAD;
+                askXRel = listenXRel + listenB.width + PAD;
+            }
+            // Right boundary collision
+            if (askXRel + askB.width > screenWidth - PAD) {
+                askXRel = screenWidth - PAD - askB.width;
+                listenXRel = askXRel - listenB.width - PAD;
+            }
+
+            if (strategy.primary === 'above') {
+                const windowBottomAbs = headerBounds.y - PAD;
+                layout.ask = {
+                    x: Math.round(askXRel + workAreaX),
+                    y: Math.round(windowBottomAbs - askB.height),
+                    width: askB.width,
+                    height: askB.height
+                };
+                layout.listen = {
+                    x: Math.round(listenXRel + workAreaX),
+                    y: Math.round(windowBottomAbs - listenB.height),
+                    width: listenB.width,
+                    height: listenB.height
+                };
+            } else {
+                const yAbs = headerBounds.y + headerBounds.height + PAD;
+                layout.ask = {
+                    x: Math.round(askXRel + workAreaX),
+                    y: Math.round(yAbs),
+                    width: askB.width,
+                    height: askB.height
+                };
+                layout.listen = {
+                    x: Math.round(listenXRel + workAreaX),
+                    y: Math.round(yAbs),
+                    width: listenB.width,
+                    height: listenB.height
+                };
+            }
+        } else {
+            const winName = askVis ? 'ask' : 'listen';
+            const winB = askVis ? askB : listenB;
+            if (!winB) return {};
+
+            let xRel = headerCenterXRel - winB.width / 2;
+            xRel = Math.max(PAD, Math.min(screenWidth - winB.width - PAD, xRel));
+
+            let yPos;
+            if (strategy.primary === 'above') {
+                yPos = (headerBounds.y - workAreaY) - PAD - winB.height;
+            } else {
+                yPos = (headerBounds.y - workAreaY) + headerBounds.height + PAD;
+            }
+
+            layout[winName] = {
+                x: Math.round(xRel + workAreaX),
+                y: Math.round(yPos + workAreaY),
+                width: winB.width,
+                height: winB.height
+            };
+        }
+
+        return layout;
+    }
+
+    calculateListenWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
         const width = 400;
-        const height = 400;
+        const height = 200;
         const minWidth = 300;
-        const minHeight = 300;
+        const minHeight = 150;
         
         // Clamp dimensions
-        const finalWidth = Math.max(minWidth, Math.min(width, this.screenBounds.width - 2 * this.windowSpacing));
-        const finalHeight = Math.max(minHeight, Math.min(height, this.screenBounds.height - 2 * this.windowSpacing));
+        const finalWidth = Math.max(minWidth, Math.min(width, workArea.width - 2 * this.windowSpacing));
+        const finalHeight = Math.max(minHeight, Math.min(height, workArea.height - 2 * this.windowSpacing));
         
         let x, y;
         
         if (headerBounds) {
-            // Position below header, aligned to the left side
-            x = headerBounds.x;
-            y = headerBounds.y + headerBounds.height + 10; // 10px gap below header
+            if (strategy.primary === 'below') {
+                x = headerBounds.x;
+                y = headerBounds.y + headerBounds.height + 10;
+            } else if (strategy.primary === 'above') {
+                x = headerBounds.x;
+                y = headerBounds.y - finalHeight - 10;
+            } else if (strategy.primary === 'right') {
+                x = headerBounds.x + headerBounds.width + 10;
+                y = headerBounds.y;
+            } else {
+                x = headerBounds.x - finalWidth - 10;
+                y = headerBounds.y;
+            }
         } else {
             // Fallback positioning - bottom left
-            x = this.screenBounds.x + this.windowSpacing;
-            y = this.screenBounds.y + this.screenBounds.height - finalHeight - this.windowSpacing;
+            x = workArea.x + this.windowSpacing;
+            y = workArea.y + workArea.height - finalHeight - this.windowSpacing;
         }
         
         // Ensure window stays within screen bounds
-        x = Math.max(this.screenBounds.x, Math.min(x, this.screenBounds.x + this.screenBounds.width - finalWidth));
-        y = Math.max(this.screenBounds.y, Math.min(y, this.screenBounds.y + this.screenBounds.height - finalHeight));
+        x = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - finalWidth));
+        y = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - finalHeight));
         
         return { x, y, width: finalWidth, height: finalHeight };
     }
 
-    calculateAskWindowLayout(headerBounds = null) {
+    calculateAskWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
         const width = 500;
         const height = 600;
@@ -77,29 +214,39 @@ class WindowLayoutManager {
         const minHeight = 400;
         
         // Clamp dimensions
-        const finalWidth = Math.max(minWidth, Math.min(width, this.screenBounds.width - 2 * this.windowSpacing));
-        const finalHeight = Math.max(minHeight, Math.min(height, this.screenBounds.height - 2 * this.windowSpacing));
+        const finalWidth = Math.max(minWidth, Math.min(width, workArea.width - 2 * this.windowSpacing));
+        const finalHeight = Math.max(minHeight, Math.min(height, workArea.height - 2 * this.windowSpacing));
         
         let x, y;
         
         if (headerBounds) {
-            // Position below header, aligned to the right side
-            x = headerBounds.x + headerBounds.width - finalWidth;
-            y = headerBounds.y + headerBounds.height + 10; // 10px gap below header
+            if (strategy.primary === 'below') {
+                x = headerBounds.x + headerBounds.width - finalWidth;
+                y = headerBounds.y + headerBounds.height + 10;
+            } else if (strategy.primary === 'above') {
+                x = headerBounds.x + headerBounds.width - finalWidth;
+                y = headerBounds.y - finalHeight - 10;
+            } else if (strategy.primary === 'right') {
+                x = headerBounds.x + headerBounds.width + 10;
+                y = headerBounds.y;
+            } else {
+                x = headerBounds.x - finalWidth - 10;
+                y = headerBounds.y;
+            }
         } else {
             // Fallback positioning - top right
-            x = this.screenBounds.x + this.screenBounds.width - finalWidth - this.windowSpacing;
-            y = this.screenBounds.y + this.windowSpacing;
+            x = workArea.x + workArea.width - finalWidth - this.windowSpacing;
+            y = workArea.y + this.windowSpacing;
         }
         
         // Ensure window stays within screen bounds
-        x = Math.max(this.screenBounds.x, Math.min(x, this.screenBounds.x + this.screenBounds.width - finalWidth));
-        y = Math.max(this.screenBounds.y, Math.min(y, this.screenBounds.y + this.screenBounds.height - finalHeight));
+        x = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - finalWidth));
+        y = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - finalHeight));
         
         return { x, y, width: finalWidth, height: finalHeight };
     }
 
-    calculateSettingsWindowLayout(headerBounds = null) {
+    calculateSettingsWindowLayout(headerBounds = null, strategy = { name: 'below', primary: 'below' }, workArea = this.screenBounds) {
         this.updateScreenBounds();
         const width = 600;
         const height = 700;
@@ -107,24 +254,35 @@ class WindowLayoutManager {
         const minHeight = 500;
         
         // Clamp dimensions
-        const finalWidth = Math.max(minWidth, Math.min(width, this.screenBounds.width - 2 * this.windowSpacing));
-        const finalHeight = Math.max(minHeight, Math.min(height, this.screenBounds.height - 2 * this.windowSpacing));
+        const finalWidth = Math.max(minWidth, Math.min(width, workArea.width - 2 * this.windowSpacing));
+        const finalHeight = Math.max(minHeight, Math.min(height, workArea.height - 2 * this.windowSpacing));
         
         let x, y;
         
         if (headerBounds) {
-            // Position below header, centered horizontally with header
-            x = headerBounds.x + (headerBounds.width - finalWidth) / 2;
-            y = headerBounds.y + headerBounds.height + 10; // 10px gap below header
+            // Prefer below/above; align near right edge (settings button area)
+            if (strategy.primary === 'below') {
+                x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
+                y = headerBounds.y + headerBounds.height + 10;
+            } else if (strategy.primary === 'above') {
+                x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
+                y = headerBounds.y - finalHeight - 10;
+            } else if (strategy.primary === 'right') {
+                x = headerBounds.x + headerBounds.width + 10;
+                y = headerBounds.y;
+            } else {
+                x = headerBounds.x - finalWidth - 10;
+                y = headerBounds.y;
+            }
         } else {
             // Fallback positioning - center of screen
-            x = this.screenBounds.x + (this.screenBounds.width - finalWidth) / 2;
-            y = this.screenBounds.y + (this.screenBounds.height - finalHeight) / 2;
+            x = workArea.x + (workArea.width - finalWidth) / 2;
+            y = workArea.y + (workArea.height - finalHeight) / 2;
         }
         
         // Ensure window stays within screen bounds
-        x = Math.max(this.screenBounds.x, Math.min(x, this.screenBounds.x + this.screenBounds.width - finalWidth));
-        y = Math.max(this.screenBounds.y, Math.min(y, this.screenBounds.y + this.screenBounds.height - finalHeight));
+        x = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - finalWidth));
+        y = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - finalHeight));
         
         return { x, y, width: finalWidth, height: finalHeight };
     }
@@ -146,6 +304,140 @@ class WindowLayoutManager {
         const y = this.screenBounds.y + this.windowSpacing;
         
         return { x, y, width: finalWidth, height: finalHeight };
+    }
+
+    // Settings anchored position near header button with clamping
+    calculateSettingsWindowPosition() {
+        try {
+            const header = this.windowPool && this.windowPool.get ? this.windowPool.get('header') : null;
+            const settings = this.windowPool && this.windowPool.get ? this.windowPool.get('settings') : null;
+            if (!header || header.isDestroyed() || !settings || settings.isDestroyed()) return null;
+            const headerBounds = header.getBounds();
+            const settingsBounds = settings.getBounds();
+            const display = getCurrentDisplay(header);
+            const { x: workAreaX, y: workAreaY, width: screenWidth, height: screenHeight } = display.workArea;
+            const PAD = 5;
+            const buttonPadding = 170;
+            const x = headerBounds.x + headerBounds.width - settingsBounds.width + buttonPadding;
+            const y = headerBounds.y + headerBounds.height + PAD;
+            const clampedX = Math.max(workAreaX + 10, Math.min(workAreaX + screenWidth - settingsBounds.width - 10, x));
+            const clampedY = Math.max(workAreaY + 10, Math.min(workAreaY + screenHeight - settingsBounds.height - 10, y));
+            return { x: Math.round(clampedX), y: Math.round(clampedY) };
+        } catch {
+            return null;
+        }
+    }
+
+    calculateHeaderResize(header, { width, height }) {
+        if (!header) return null;
+        const currentBounds = header.getBounds();
+        const centerX = currentBounds.x + currentBounds.width / 2;
+        const newX = Math.round(centerX - width / 2);
+        const display = getCurrentDisplay(header);
+        const { x: workAreaX, width: workAreaWidth } = display.workArea;
+        const clampedX = Math.max(workAreaX, Math.min(workAreaX + workAreaWidth - width, newX));
+        return { x: clampedX, y: currentBounds.y, width, height };
+    }
+
+    calculateClampedPosition(header, { x: newX, y: newY }) {
+        const { screen } = require('electron');
+        if (!header) return null;
+        const targetDisplay = screen.getDisplayNearestPoint({ x: newX, y: newY });
+        const { x: workAreaX, y: workAreaY, width, height } = targetDisplay.workArea;
+        const headerBounds = header.getBounds();
+        const clampedX = Math.max(workAreaX, Math.min(newX, workAreaX + width - headerBounds.width));
+        const clampedY = Math.max(workAreaY, Math.min(newY, workAreaY + height - headerBounds.height));
+        return { x: clampedX, y: clampedY };
+    }
+
+    calculateWindowHeightAdjustment(senderWindow, targetHeight) {
+        if (!senderWindow) return null;
+        const currentBounds = senderWindow.getBounds();
+        const minHeight = senderWindow.getMinimumSize()[1];
+        const maxHeight = senderWindow.getMaximumSize()[1];
+        let adjustedHeight = Math.max(minHeight, targetHeight);
+        if (maxHeight > 0) {
+            adjustedHeight = Math.min(maxHeight, adjustedHeight);
+        }
+        return { ...currentBounds, height: adjustedHeight };
+    }
+
+    calculateStepMovePosition(header, direction) {
+        if (!header) return null;
+        const currentBounds = header.getBounds();
+        const stepSize = 80;
+        let targetX = currentBounds.x;
+        let targetY = currentBounds.y;
+        switch (direction) {
+            case 'left': targetX -= stepSize; break;
+            case 'right': targetX += stepSize; break;
+            case 'up': targetY -= stepSize; break;
+            case 'down': targetY += stepSize; break;
+        }
+        return this.calculateClampedPosition(header, { x: targetX, y: targetY });
+    }
+
+    calculateEdgePosition(header, direction) {
+        const { screen } = require('electron');
+        if (!header) return null;
+        const display = getCurrentDisplay(header) || screen.getPrimaryDisplay();
+        const { workArea } = display;
+        const currentBounds = header.getBounds();
+        let targetX = currentBounds.x;
+        let targetY = currentBounds.y;
+        switch (direction) {
+            case 'left': targetX = workArea.x; break;
+            case 'right': targetX = workArea.x + workArea.width - currentBounds.width; break;
+            case 'up': targetY = workArea.y; break;
+            case 'down': targetY = workArea.y + workArea.height - currentBounds.height; break;
+        }
+        return { x: targetX, y: targetY };
+    }
+
+    calculateShortcutSettingsWindowPosition() {
+        const header = this.windowPool && this.windowPool.get ? this.windowPool.get('header') : null;
+        const shortcutSettings = this.windowPool && this.windowPool.get ? this.windowPool.get('shortcut-settings') : null;
+        if (!header || !shortcutSettings) return null;
+
+        const headerBounds = header.getBounds();
+        const shortcutBounds = shortcutSettings.getBounds();
+        const display = getCurrentDisplay(header);
+        const { workArea } = display;
+
+        let newX = Math.round(headerBounds.x + (headerBounds.width / 2) - (shortcutBounds.width / 2));
+        let newY = Math.round(headerBounds.y);
+
+        newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - shortcutBounds.width));
+        newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - shortcutBounds.height));
+
+        return { x: newX, y: newY, width: shortcutBounds.width, height: shortcutBounds.height };
+    }
+
+    calculateNewPositionForDisplay(window, targetDisplayId) {
+        const { screen } = require('electron');
+        if (!window) return null;
+        const targetDisplay = screen.getAllDisplays().find(d => d.id === targetDisplayId);
+        if (!targetDisplay) return null;
+        const currentBounds = window.getBounds();
+        const currentDisplay = getCurrentDisplay(window);
+        if (currentDisplay && currentDisplay.id === targetDisplay.id) return { x: currentBounds.x, y: currentBounds.y };
+        const relativeX = (currentBounds.x - currentDisplay.workArea.x) / currentDisplay.workArea.width;
+        const relativeY = (currentBounds.y - currentDisplay.workArea.y) / currentDisplay.workArea.height;
+        const targetX = targetDisplay.workArea.x + targetDisplay.workArea.width * relativeX;
+        const targetY = targetDisplay.workArea.y + targetDisplay.workArea.height * relativeY;
+        const clampedX = Math.max(targetDisplay.workArea.x, Math.min(targetX, targetDisplay.workArea.x + targetDisplay.workArea.width - currentBounds.width));
+        const clampedY = Math.max(targetDisplay.workArea.y, Math.min(targetY, targetDisplay.workArea.y + targetDisplay.workArea.height - currentBounds.height));
+        return { x: Math.round(clampedX), y: Math.round(clampedY) };
+    }
+
+    boundsOverlap(bounds1, bounds2) {
+        const margin = 10;
+        return !(
+            bounds1.x + bounds1.width + margin < bounds2.x ||
+            bounds2.x + bounds2.width + margin < bounds1.x ||
+            bounds1.y + bounds1.height + margin < bounds2.y ||
+            bounds2.y + bounds2.height + margin < bounds1.y
+        );
     }
 }
 

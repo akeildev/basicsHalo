@@ -1,13 +1,14 @@
-const { ipcRenderer } = require('electron');
+// Using window.electronAPI from preload script since contextIsolation is enabled
 
 class AskWindow {
     constructor() {
         this.messages = [];
         this.isProcessing = false;
         this.selectedModel = 'gpt-4';
+        this.currentScreenshot = null;
         this.initializeElements();
         this.setupEventListeners();
-        this.setupIPCListeners();
+        // Note: IPC listeners are not needed with the preload API
     }
 
     initializeElements() {
@@ -16,6 +17,12 @@ class AskWindow {
         this.sendBtn = document.getElementById('sendBtn');
         this.modelSelect = document.getElementById('modelSelect');
         this.characterCount = document.getElementById('characterCount');
+        
+        // Screenshot elements
+        this.screenshotBtn = document.getElementById('screenshotBtn');
+        this.screenshotPreview = document.getElementById('screenshotPreview');
+        this.screenshotImage = document.getElementById('screenshotImage');
+        this.removeScreenshotBtn = document.getElementById('removeScreenshot');
     }
 
     setupEventListeners() {
@@ -23,21 +30,26 @@ class AskWindow {
         this.messageInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
         this.messageInput.addEventListener('input', () => this.handleInput());
         this.modelSelect.addEventListener('change', (e) => this.handleModelChange(e));
+        
+        // Screenshot button
+        if (this.screenshotBtn) {
+            console.log('[Ask] Screenshot button found, adding click listener');
+            this.screenshotBtn.addEventListener('click', () => {
+                console.log('[Ask] Screenshot button clicked!');
+                this.captureScreenshot();
+            });
+        } else {
+            console.error('[Ask] Screenshot button not found!');
+        }
+        
+        // Remove screenshot button
+        if (this.removeScreenshotBtn) {
+            this.removeScreenshotBtn.addEventListener('click', () => this.removeScreenshot());
+        }
     }
 
-    setupIPCListeners() {
-        ipcRenderer.on('ask:response', (event, data) => {
-            this.handleResponse(data);
-        });
-
-        ipcRenderer.on('ask:error', (event, error) => {
-            this.handleError(error.message);
-        });
-
-        ipcRenderer.on('ask:stream', (event, data) => {
-            this.handleStreamResponse(data);
-        });
-    }
+    // IPC listeners are not needed with the preload API
+    // Responses are handled directly through the promise returned by askQuestion
 
     handleKeyDown(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -93,9 +105,10 @@ class AskWindow {
             this.isProcessing = true;
             this.sendBtn.disabled = true;
             
-            const result = await ipcRenderer.invoke('ask:prompt', {
-                prompt: text,
-                model: this.selectedModel
+            const result = await window.electronAPI.askQuestion(text, {
+                model: this.selectedModel,
+                includeScreenshot: !!this.currentScreenshot,
+                screenshot: this.currentScreenshot
             });
             
             if (!result.success) {
@@ -237,11 +250,88 @@ class AskWindow {
         // Window lost focus
     }
 
+    async captureScreenshot() {
+        console.log('[Ask] captureScreenshot() called');
+        console.log('[Ask] Starting screenshot capture...');
+        
+        try {
+            // Add visual feedback
+            if (this.screenshotBtn) {
+                this.screenshotBtn.classList.add('capturing');
+                this.screenshotBtn.disabled = true;
+            }
+            
+            // Capture screenshot using preload API
+            const result = await window.electronAPI.captureScreenshot({
+                quality: 80,
+                maxWidth: 1920,
+                maxHeight: 1080
+            });
+            
+            console.log('[Ask] Screenshot result:', result);
+            
+            if (result && result.success) {
+                console.log('[Ask] Screenshot captured successfully');
+                console.log('[Ask] Screenshot data length:', result.screenshot ? result.screenshot.length : 0);
+                this.displayScreenshot(result.screenshot);
+                this.addMessage('system', '📸 Screenshot captured! You can now ask questions about what\'s on your screen.');
+            } else {
+                console.error('[Ask] Failed to capture screenshot:', result.error);
+                this.handleError(result.error || 'Failed to capture screenshot');
+            }
+        } catch (error) {
+            console.error('[Ask] Error capturing screenshot:', error);
+            this.handleError('Failed to capture screenshot: ' + error.message);
+        } finally {
+            // Remove visual feedback
+            if (this.screenshotBtn) {
+                this.screenshotBtn.classList.remove('capturing');
+                this.screenshotBtn.disabled = false;
+            }
+        }
+    }
+
+    displayScreenshot(screenshotData) {
+        console.log('[Ask] displayScreenshot() called');
+        console.log('[Ask] Screenshot data type:', typeof screenshotData);
+        console.log('[Ask] Screenshot data length:', screenshotData ? screenshotData.length : 0);
+        
+        if (!screenshotData) {
+            console.error('[Ask] No screenshot data to display');
+            return;
+        }
+        
+        this.currentScreenshot = screenshotData;
+        
+        // Show preview
+        if (this.screenshotPreview && this.screenshotImage) {
+            // Convert base64 to image URL if needed
+            const imageUrl = screenshotData.startsWith('data:') 
+                ? screenshotData 
+                : `data:image/png;base64,${screenshotData}`;
+            
+            this.screenshotImage.src = imageUrl;
+            this.screenshotPreview.style.display = 'block';
+        }
+    }
+
+    removeScreenshot() {
+        console.log('[Ask] Removing screenshot...');
+        
+        this.currentScreenshot = null;
+        
+        if (this.screenshotPreview) {
+            this.screenshotPreview.style.display = 'none';
+        }
+        
+        if (this.screenshotImage) {
+            this.screenshotImage.src = '';
+        }
+    }
+
     handleWindowClose() {
         // Clean up resources
-        ipcRenderer.removeAllListeners('ask:response');
-        ipcRenderer.removeAllListeners('ask:error');
-        ipcRenderer.removeAllListeners('ask:stream');
+        // No listeners to clean up when using preload API
     }
 }
 

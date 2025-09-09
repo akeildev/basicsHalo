@@ -102,6 +102,30 @@ class HeaderWindow {
             this.setStatus('ready', 'Ready');
         });
         
+        // Listen for window visibility changes to update button states
+        window.electronAPI.on('window:visibilityChanged', (event, data) => {
+            console.log('[Header] Window visibility changed:', data);
+            if (data.name === 'listen' && this.listenBtn) {
+                if (data.visible) {
+                    this.listenBtn.classList.add('active');
+                } else {
+                    this.listenBtn.classList.remove('active');
+                }
+            } else if (data.name === 'ask' && this.askBtn) {
+                if (data.visible) {
+                    this.askBtn.classList.add('active');
+                } else {
+                    this.askBtn.classList.remove('active');
+                }
+            } else if (data.name === 'settings' && this.settingsBtn) {
+                if (data.visible) {
+                    this.settingsBtn.classList.add('active');
+                } else {
+                    this.settingsBtn.classList.remove('active');
+                }
+            }
+        });
+        
         console.log('[Header] IPC listeners set up successfully');
     }
 
@@ -158,59 +182,86 @@ class HeaderWindow {
     }
 
     async openListenWindow() {
-        console.log('[Header] Opening Listen window...');
+        console.log('[Header] Toggling Listen window...');
         try {
             if (!window.electronAPI) {
                 throw new Error('electronAPI not available');
             }
-            const result = await window.electronAPI.requestWindowVisibility({ name: 'listen', visible: true });
+            // Don't pass visible parameter to trigger toggle behavior
+            const result = await window.electronAPI.requestWindowVisibility({ name: 'listen' });
             console.log('[Header] Listen window result:', result);
             if (!result?.success) {
-                this.showError('Failed to open Listen window: ' + (result?.error || 'Unknown error'));
+                this.showError('Failed to toggle Listen window: ' + (result?.error || 'Unknown error'));
             } else {
-                console.log('[Header] Listen window opened successfully');
+                console.log('[Header] Listen window toggled successfully');
+                // Update button state based on visibility
+                if (this.listenBtn) {
+                    if (result.visible) {
+                        this.listenBtn.classList.add('active');
+                    } else {
+                        this.listenBtn.classList.remove('active');
+                    }
+                }
             }
         } catch (error) {
-            console.error('[Header] Error opening Listen window:', error);
-            this.showError('Failed to open Listen window: ' + error.message);
+            console.error('[Header] Error toggling Listen window:', error);
+            this.showError('Failed to toggle Listen window: ' + error.message);
         }
     }
 
     async openAskWindow() {
-        console.log('[Header] Opening Ask window...');
+        console.log('[Header] Toggling Ask window...');
         try {
             if (!window.electronAPI) {
                 throw new Error('electronAPI not available');
             }
-            const result = await window.electronAPI.requestWindowVisibility({ name: 'ask', visible: true });
+            // Don't pass visible parameter to trigger toggle behavior
+            const result = await window.electronAPI.requestWindowVisibility({ name: 'ask' });
             console.log('[Header] Ask window result:', result);
             if (!result?.success) {
-                this.showError('Failed to open Ask window: ' + (result?.error || 'Unknown error'));
+                this.showError('Failed to toggle Ask window: ' + (result?.error || 'Unknown error'));
             } else {
-                console.log('[Header] Ask window opened successfully');
+                console.log('[Header] Ask window toggled successfully');
+                // Update button state based on visibility
+                if (this.askBtn) {
+                    if (result.visible) {
+                        this.askBtn.classList.add('active');
+                    } else {
+                        this.askBtn.classList.remove('active');
+                    }
+                }
             }
         } catch (error) {
-            console.error('[Header] Error opening Ask window:', error);
-            this.showError('Failed to open Ask window: ' + error.message);
+            console.error('[Header] Error toggling Ask window:', error);
+            this.showError('Failed to toggle Ask window: ' + error.message);
         }
     }
 
     async openSettingsWindow() {
-        console.log('[Header] Opening Settings window...');
+        console.log('[Header] Toggling Settings window...');
         try {
             if (!window.electronAPI) {
                 throw new Error('electronAPI not available');
             }
-            const result = await window.electronAPI.requestWindowVisibility({ name: 'settings', visible: true });
+            // Don't pass visible parameter to trigger toggle behavior
+            const result = await window.electronAPI.requestWindowVisibility({ name: 'settings' });
             console.log('[Header] Settings window result:', result);
             if (!result?.success) {
-                this.showError('Failed to open Settings window: ' + (result?.error || 'Unknown error'));
+                this.showError('Failed to toggle Settings window: ' + (result?.error || 'Unknown error'));
             } else {
-                console.log('[Header] Settings window opened successfully');
+                console.log('[Header] Settings window toggled successfully');
+                // Update button state based on visibility
+                if (this.settingsBtn) {
+                    if (result.visible) {
+                        this.settingsBtn.classList.add('active');
+                    } else {
+                        this.settingsBtn.classList.remove('active');
+                    }
+                }
             }
         } catch (error) {
-            console.error('[Header] Error opening Settings window:', error);
-            this.showError('Failed to open Settings window: ' + error.message);
+            console.error('[Header] Error toggling Settings window:', error);
+            this.showError('Failed to toggle Settings window: ' + error.message);
         }
     }
 
