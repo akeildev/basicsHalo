@@ -76,6 +76,8 @@
     "fs-extra": "^11.1.1",
     "jsonwebtoken": "^9.0.2",
     "keytar": "^7.9.0",
+    "livekit-client": "^2.0.0",
+    "livekit-server-sdk": "^2.0.0",
     "lodash": "^4.17.21",
     "mime-types": "^2.1.35",
     "moment": "^2.29.4",

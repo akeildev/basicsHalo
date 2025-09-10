@@ -1,0 +1,10 @@
+# LiveKit Voice Agent Requirements
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-elevenlabs
+livekit-plugins-silero
+
+# Core dependencies
+python-dotenv
+aiohttp
+numpy

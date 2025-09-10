@@ -1,57 +1,79 @@
-// Using window.electronAPI from preload script since contextIsolation is enabled
+// Listen window renderer with chat-style UI matching Ask window
 
 class ListenWindow {
     constructor() {
         this.isListening = false;
-        this.transcriptHistory = [];
-        this.audioVisualizer = null;
-        this.mediaCapture = null;
+        this.livekitClient = null;
+        
         this.initializeElements();
         this.setupEventListeners();
         this.setupIPCListeners();
-        this.initializeAudioVisualizer();
-        this.initializeMediaCapture();
     }
 
     initializeElements() {
-        this.startStopBtn = document.getElementById('startStopBtn');
+        // Header elements
+        this.voiceIndicator = document.getElementById('voiceIndicator');
         this.clearBtn = document.getElementById('clearBtn');
-        this.statusIndicator = document.getElementById('statusIndicator');
-        this.statusDot = this.statusIndicator.querySelector('.status-dot');
-        this.statusText = this.statusIndicator.querySelector('.status-text');
-        this.transcriptText = document.getElementById('transcriptText');
-        this.timestamp = document.getElementById('timestamp');
-        this.confidence = document.getElementById('confidence');
-        this.visualizerBars = document.querySelectorAll('.bar');
+        
+        // Messages area
+        this.messagesContainer = document.getElementById('messagesContainer');
+        this.messages = document.getElementById('messages');
+        
+        // Control elements
+        this.voiceBtn = document.getElementById('voiceBtn');
+        this.statusText = document.getElementById('statusText');
     }
 
     setupEventListeners() {
-        this.startStopBtn.addEventListener('click', () => this.toggleListening());
-        this.clearBtn.addEventListener('click', () => this.clearTranscript());
+        // Voice button - click to toggle
+        this.voiceBtn.addEventListener('click', () => this.toggleListening());
+        
+        // Clear button
+        this.clearBtn.addEventListener('click', () => this.clearMessages());
     }
 
     setupIPCListeners() {
-        ipcRenderer.on('listen:status', (event, data) => {
+        // Listen for status updates
+        window.electronAPI.onListenStatus((data) => {
             this.updateListeningStatus(data.isListening);
         });
 
-        ipcRenderer.on('listen:transcript', (event, data) => {
-            this.updateTranscript(data.text, data.confidence, data.timestamp);
+        // Listen for transcript updates
+        window.electronAPI.onListenTranscript((data) => {
+            this.addMessage('user', data.text);
         });
 
-        ipcRenderer.on('listen:error', (event, error) => {
-            this.showError(error.message);
+        // Listen for errors
+        window.electronAPI.onListenError((error) => {
+            this.addMessage('error', error.message);
         });
 
-        ipcRenderer.on('listen:audioLevel', (event, level) => {
-            this.updateAudioVisualizer(level);
-        });
-    }
-
-    initializeAudioVisualizer() {
-        // Initialize visualizer bars
-        this.visualizerBars.forEach((bar, index) => {
-            bar.style.height = '8px';
+        // LiveKit events
+        window.electronAPI.onLiveKitEvent((eventType, data) => {
+            console.log('[Listen] LiveKit event:', eventType, data);
+            
+            switch(eventType) {
+                case 'connected':
+                    this.addMessage('system', 'Connected to voice channel');
+                    this.updateStatus('Connected - Ready to talk');
+                    break;
+                case 'disconnected':
+                    this.addMessage('system', 'Disconnected from voice channel');
+                    this.updateStatus('Disconnected');
+                    break;
+                case 'agentConnected':
+                    this.addMessage('system', 'AI Assistant joined');
+                    break;
+                case 'agentSpeaking':
+                    this.setAgentSpeaking(data.speaking);
+                    break;
+                case 'agentResponse':
+                    this.addMessage('assistant', data.text);
+                    break;
+                case 'error':
+                    this.addMessage('error', data.error || 'Connection error');
+                    break;
+            }
         });
     }
 
@@ -63,228 +85,203 @@ class ListenWindow {
                 await this.startListening();
             }
         } catch (error) {
-            this.showError('Failed to toggle listening: ' + error.message);
+            console.error('[Listen] Toggle error:', error);
+            this.addMessage('error', error.message);
         }
     }
 
     async startListening() {
-        try {
-            console.log('[Listen] Starting listening...');
+        console.log('[Listen] Starting voice chat...');
+        
+        this.voiceBtn.disabled = true;
+        this.updateStatus('Connecting...');
+        
+        // Always use agent mode with LiveKit
+        const result = await window.electronAPI.startListening({ 
+            agentMode: true,
+            startAgent: true 
+        });
+        
+        if (result.success) {
+            this.isListening = true;
+            this.updateUI(true);
             
-            // Start main process listening (system audio)
-            const result = await window.electronAPI.startListening();
-            console.log('[Listen] Start result:', result);
-            
-            if (result.success) {
-                this.updateListeningStatus(true);
-                
-                // Also start media capture in renderer (microphone)
-                await this.startMediaCapture();
-            } else {
-                this.showError(result.error);
+            // Initialize LiveKit client if we have connection details
+            if (result.livekit) {
+                await this.connectLiveKit(result.livekit);
             }
-        } catch (error) {
-            console.error('[Listen] Start error:', error);
-            this.showError('Failed to start listening: ' + error.message);
+            
+            this.voiceBtn.disabled = false;
+        } else {
+            this.addMessage('error', result.error || 'Failed to start voice chat');
+            this.voiceBtn.disabled = false;
+            this.updateStatus('Failed to connect');
         }
     }
 
     async stopListening() {
+        console.log('[Listen] Stopping voice chat...');
+        
+        this.voiceBtn.disabled = true;
+        this.updateStatus('Disconnecting...');
+        
+        // Disconnect LiveKit first
+        if (this.livekitClient) {
+            await this.livekitClient.disconnect();
+            this.livekitClient = null;
+        }
+        
+        const result = await window.electronAPI.stopListening();
+        
+        if (result.success) {
+            this.isListening = false;
+            this.updateUI(false);
+            this.updateStatus('Ready to listen');
+        } else {
+            this.addMessage('error', result.error || 'Failed to stop');
+        }
+        
+        this.voiceBtn.disabled = false;
+    }
+
+    async connectLiveKit(config) {
+        console.log('[Listen] Connecting to LiveKit...');
+        
         try {
-            console.log('[Listen] Stopping listening...');
+            // Dynamically import LiveKit client
+            await this.ensureLiveKitClient();
             
-            // Stop media capture in renderer
-            await this.stopMediaCapture();
-            
-            // Stop main process listening
-            const result = await window.electronAPI.stopListening();
-            console.log('[Listen] Stop result:', result);
+            // Connect to LiveKit room
+            const result = await this.livekitClient.connect(config.url, config.token);
             
             if (result.success) {
-                this.updateListeningStatus(false);
+                console.log('[Listen] ✅ Connected to LiveKit');
             } else {
-                this.showError(result.error);
+                throw new Error('Failed to connect to LiveKit');
             }
         } catch (error) {
-            console.error('[Listen] Stop error:', error);
-            this.showError('Failed to stop listening: ' + error.message);
+            console.error('[Listen] LiveKit connection error:', error);
+            this.addMessage('error', 'Failed to connect to voice server');
         }
     }
 
-    clearTranscript() {
-        this.transcriptText.textContent = '';
-        this.transcriptHistory = [];
-        this.updateTimestamp('');
-        this.updateConfidence(0);
+    async ensureLiveKitClient() {
+        if (this.livekitClient) return;
+        
+        try {
+            const module = await import('./livekitClient.js');
+            const LiveKitClient = module.default;
+            this.livekitClient = new LiveKitClient();
+            console.log('[Listen] LiveKit client initialized');
+        } catch (error) {
+            console.error('[Listen] Failed to load LiveKit client:', error);
+            throw error;
+        }
+    }
+
+    updateUI(listening) {
+        if (listening) {
+            this.voiceIndicator.classList.add('active');
+            this.voiceBtn.classList.add('active');
+            this.voiceBtn.querySelector('.btn-text').textContent = 'Stop';
+        } else {
+            this.voiceIndicator.classList.remove('active');
+            this.voiceBtn.classList.remove('active');
+            this.voiceBtn.querySelector('.btn-text').textContent = 'Start Voice Chat';
+        }
+    }
+
+    setAgentSpeaking(speaking) {
+        if (speaking) {
+            // Show agent is speaking with a typing indicator
+            this.showTypingIndicator();
+        } else {
+            this.hideTypingIndicator();
+        }
+    }
+
+    addMessage(type, text) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.textContent = text;
+        contentDiv.appendChild(textDiv);
+        
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'message-time';
+        timeDiv.textContent = new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        contentDiv.appendChild(timeDiv);
+        
+        messageDiv.appendChild(contentDiv);
+        this.messages.appendChild(messageDiv);
+        
+        // Auto-scroll to bottom
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    showTypingIndicator() {
+        // Remove any existing typing indicator
+        this.hideTypingIndicator();
+        
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'message assistant thinking';
+        typingDiv.id = 'typingIndicator';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        
+        const indicatorDiv = document.createElement('div');
+        indicatorDiv.className = 'typing-indicator';
+        
+        for (let i = 0; i < 3; i++) {
+            const dot = document.createElement('span');
+            dot.className = 'typing-dot';
+            indicatorDiv.appendChild(dot);
+        }
+        
+        contentDiv.appendChild(indicatorDiv);
+        typingDiv.appendChild(contentDiv);
+        this.messages.appendChild(typingDiv);
+        
+        // Auto-scroll to bottom
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    hideTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    clearMessages() {
+        this.messages.innerHTML = '';
+        this.addMessage('system', 'Chat cleared');
+    }
+
+    updateStatus(text) {
+        this.statusText.textContent = text;
     }
 
     updateListeningStatus(isListening) {
         this.isListening = isListening;
-        
-        if (isListening) {
-            this.startStopBtn.classList.add('active');
-            this.startStopBtn.querySelector('.btn-text').textContent = 'Stop Listening';
-            this.statusDot.classList.add('listening');
-            this.statusText.textContent = 'Listening...';
-        } else {
-            this.startStopBtn.classList.remove('active');
-            this.startStopBtn.querySelector('.btn-text').textContent = 'Start Listening';
-            this.statusDot.classList.remove('listening');
-            this.statusText.textContent = 'Ready';
-        }
-    }
-
-    updateTranscript(text, confidence = 1, timestamp = null) {
-        if (text) {
-            this.transcriptText.textContent = text;
-            this.transcriptHistory.push({
-                text,
-                confidence,
-                timestamp: timestamp || new Date().toISOString()
-            });
-            
-            this.updateTimestamp(timestamp);
-            this.updateConfidence(confidence);
-            
-            // Auto-scroll to bottom
-            const container = this.transcriptText.parentElement.parentElement;
-            container.scrollTop = container.scrollHeight;
-        }
-    }
-
-    updateTimestamp(timestamp) {
-        if (timestamp) {
-            const date = new Date(timestamp);
-            this.timestamp.textContent = date.toLocaleTimeString();
-        } else {
-            this.timestamp.textContent = '';
-        }
-    }
-
-    updateConfidence(confidence) {
-        if (confidence > 0) {
-            const percentage = Math.round(confidence * 100);
-            this.confidence.innerHTML = `
-                <span>Confidence: ${percentage}%</span>
-                <div class="confidence-bar">
-                    <div class="confidence-fill" style="width: ${percentage}%"></div>
-                </div>
-            `;
-        } else {
-            this.confidence.innerHTML = '';
-        }
-    }
-
-    updateAudioVisualizer(level) {
-        if (!this.isListening) return;
-        
-        // Update visualizer bars based on audio level
-        this.visualizerBars.forEach((bar, index) => {
-            const threshold = (index + 1) / this.visualizerBars.length;
-            if (level > threshold) {
-                bar.classList.add('active');
-            } else {
-                bar.classList.remove('active');
-            }
-        });
-    }
-
-    showError(message) {
-        this.statusDot.classList.add('error');
-        this.statusText.textContent = 'Error';
-        console.error('Listen Window Error:', message);
-        
-        // Show error in transcript
-        this.transcriptText.textContent = `Error: ${message}`;
-        
-        // Reset status after 3 seconds
-        setTimeout(() => {
-            this.statusDot.classList.remove('error');
-            this.statusText.textContent = 'Ready';
-        }, 3000);
-    }
-
-    // Handle window events
-    handleWindowFocus() {
-        // Window gained focus
-    }
-
-    handleWindowBlur() {
-        // Window lost focus
-    }
-
-    initializeMediaCapture() {
-        // Dynamically import the media capture module
-        import('./mediaCaptureRenderer.js').then(module => {
-            const MediaCaptureRenderer = module.default || module;
-            this.mediaCapture = new MediaCaptureRenderer();
-            console.log('[Listen] Media capture initialized');
-        }).catch(error => {
-            console.error('[Listen] Failed to initialize media capture:', error);
-        });
-    }
-
-    async startMediaCapture() {
-        if (!this.mediaCapture) {
-            console.warn('[Listen] Media capture not initialized');
-            return;
-        }
-
-        try {
-            // Start microphone capture in renderer
-            const micResult = await this.mediaCapture.startMicrophoneCapture();
-            if (micResult.success) {
-                console.log('[Listen] Microphone capture started in renderer');
-            }
-            
-            // Optionally start screen capture
-            // const screenResult = await this.mediaCapture.startScreenCapture();
-            
-        } catch (error) {
-            console.error('[Listen] Error starting media capture:', error);
-        }
-    }
-
-    async stopMediaCapture() {
-        if (!this.mediaCapture) return;
-
-        try {
-            this.mediaCapture.stopMicrophoneCapture();
-            this.mediaCapture.stopScreenCapture();
-            console.log('[Listen] Media capture stopped');
-        } catch (error) {
-            console.error('[Listen] Error stopping media capture:', error);
-        }
-    }
-
-    handleWindowClose() {
-        // Clean up resources
-        if (this.mediaCapture) {
-            this.mediaCapture.cleanup();
-        }
+        this.updateUI(isListening);
     }
 }
 
-// Initialize when DOM is loaded
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Listen] Initializing voice chat window...');
     window.listenWindow = new ListenWindow();
-});
-
-// Handle window events
-window.addEventListener('focus', () => {
-    if (window.listenWindow) {
-        window.listenWindow.handleWindowFocus();
-    }
-});
-
-window.addEventListener('blur', () => {
-    if (window.listenWindow) {
-        window.listenWindow.handleWindowBlur();
-    }
-});
-
-window.addEventListener('beforeunload', () => {
-    if (window.listenWindow) {
-        window.listenWindow.handleWindowClose();
-    }
+    
+    // Add welcome message
+    window.listenWindow.addMessage('system', 'Welcome to Voice Chat! Click "Start Voice Chat" to begin.');
 });

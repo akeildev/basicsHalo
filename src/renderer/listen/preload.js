@@ -6,8 +6,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hideWindow: (windowName) => ipcRenderer.invoke('window:hide', windowName),
     
     // Listen functionality
-    startListening: (options) => ipcRenderer.invoke('listen:start', options),
-    stopListening: () => ipcRenderer.invoke('listen:stop'),
+    startListening: async (options) => {
+        console.log('[Listen Preload] Starting listening with options:', options);
+        const result = await ipcRenderer.invoke('listen:start', options);
+        console.log('[Listen Preload] Start result:', result);
+        return result;
+    },
+    stopListening: async () => {
+        console.log('[Listen Preload] Stopping listening...');
+        const result = await ipcRenderer.invoke('listen:stop');
+        console.log('[Listen Preload] Stop result:', result);
+        return result;
+    },
     getListeningStatus: () => ipcRenderer.invoke('listen:getStatus'),
     startTranscription: () => ipcRenderer.invoke('listen:startTranscription'),
     stopTranscription: () => ipcRenderer.invoke('listen:stopTranscription'),
@@ -41,6 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     
     // Remove listeners
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+    
+    // LiveKit communication
+    sendLiveKitEvent: (event, data) => ipcRenderer.send('livekit:event', { event, data }),
+    onLiveKitCommand: (callback) => ipcRenderer.on('livekit:command', callback),
     
     // Media capture bridge (renderer -> main)
     sendMicrophoneData: (audioData) => ipcRenderer.send('media:microphoneData', audioData),

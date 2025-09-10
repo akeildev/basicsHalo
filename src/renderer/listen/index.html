@@ -8,51 +8,44 @@
 </head>
 <body>
     <div class="listen-container">
+        <!-- Header with voice indicator -->
         <div class="listen-header">
-            <div class="title">Live Transcription</div>
-            <div class="status-indicator" id="statusIndicator">
-                <div class="status-dot"></div>
-                <span class="status-text">Ready</span>
-            </div>
-        </div>
-        
-        <div class="audio-visualizer" id="audioVisualizer">
-            <div class="visualizer-bars">
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-                <div class="bar"></div>
-            </div>
-        </div>
-        
-        <div class="transcript-container">
-            <div class="transcript-content" id="transcriptContent">
-                <div class="transcript-text" id="transcriptText"></div>
-                <div class="transcript-meta" id="transcriptMeta">
-                    <span class="timestamp" id="timestamp"></span>
-                    <span class="confidence" id="confidence"></span>
+            <div class="header-left">
+                <div class="voice-indicator" id="voiceIndicator">
+                    <div class="voice-dot"></div>
+                    <div class="voice-dot"></div>
+                    <div class="voice-dot"></div>
                 </div>
+                <span class="title">Voice Chat</span>
+            </div>
+            <div class="header-right">
+                <button class="clear-btn" id="clearBtn" title="Clear chat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
             </div>
         </div>
-        
-        <div class="controls">
-            <button class="control-btn primary" id="startStopBtn">
-                <svg class="icon" viewBox="0 0 24 24">
-                    <path d="M12 1c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2s2-.9 2-2V3c0-1.1-.9-2-2-2zm6 6c0-3.3-2.7-6-6-6S6 3.7 6 7v4c0 3.3 2.7 6 6 6s6-2.7 6-6V7zm-2 4c0 2.2-1.8 4-4 4s-4-1.8-4-4V7c0-2.2 1.8-4 4-4s4 1.8 4 4v4z"/>
-                </svg>
-                <span class="btn-text">Start Listening</span>
+
+        <!-- Messages area matching Ask window style -->
+        <div class="messages-container" id="messagesContainer">
+            <div class="messages" id="messages">
+                <!-- Messages will be added here dynamically -->
+            </div>
+        </div>
+
+        <!-- Control area with voice button -->
+        <div class="control-container">
+            <button class="voice-btn" id="voiceBtn">
+                <div class="mic-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                </div>
+                <span class="btn-text">Hold to Talk</span>
             </button>
-            
-            <button class="control-btn secondary" id="clearBtn">
-                <svg class="icon" viewBox="0 0 24 24">
-                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                </svg>
-                <span class="btn-text">Clear</span>
-            </button>
+            <div class="status-text" id="statusText">Ready to listen</div>
         </div>
     </div>
     

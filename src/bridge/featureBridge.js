@@ -60,35 +60,81 @@ class FeatureBridge extends EventEmitter {
     async handleListenStart(event, data = {}) {
         try {
             console.log('[FeatureBridge] Listen start requested:', data);
-            
-            // Use capture window for media capture if available
-            let captureResult = null;
+
+            // Validate input data is serializable
             try {
-                const captureWindow = require('../windows/captureWindow');
-                if (captureWindow.window && captureWindow.isReady) {
-                    captureResult = await captureWindow.invoke('capture:start', data);
-                } else {
-                    console.log('[FeatureBridge] Capture window not ready, skipping media capture');
-                }
+                JSON.stringify(data);
+                console.log('[FeatureBridge] Input data is serializable');
             } catch (error) {
-                console.error('[FeatureBridge] Capture window error:', error);
-                // Continue without capture - system audio will still work
+                console.error('[FeatureBridge] Input data is NOT serializable:', error);
+                return { success: false, error: 'Input data contains non-serializable objects' };
             }
-            
-            // Also call the original handler for system audio
+
+            // Check if this is agent mode - if so, skip capture controller entirely
+            let captureResult = null;
+            if (data.agentMode === true) {
+                console.log('[FeatureBridge] 🎯 Agent mode detected - BYPASSING capture controller');
+                console.log('[FeatureBridge] 🎯 LiveKit handles ALL audio capture internally');
+                // No capture controller needed for agent mode
+            } else {
+                // Only use capture window for transcript mode
+                try {
+                    const captureWindow = require('../windows/captureWindow');
+                    if (captureWindow.window && captureWindow.isReady) {
+                        console.log('[FeatureBridge] Invoking capture window for transcript mode...');
+                        captureResult = await captureWindow.invoke('capture:start', data);
+                        console.log('[FeatureBridge] Capture window result received');
+                    } else {
+                        console.log('[FeatureBridge] Capture window not ready, creating and waiting...');
+                        const win = captureWindow.create();
+                        await captureWindow.waitForReady();
+                        captureResult = await captureWindow.invoke('capture:start', data);
+                        console.log('[FeatureBridge] Capture window result received after wait');
+                    }
+                } catch (error) {
+                    console.error('[FeatureBridge] Capture window error:', error);
+                    // Continue without capture - system audio will still work
+                }
+            }
+
+            // Call the listen service handler (for both agent and transcript modes)
+            console.log('[FeatureBridge] Calling listen service handler...');
             const handler = this.messageHandlers.get('listen:start');
             const result = await handler(data);
-            
-            // Combine results
-            const combinedResult = {
-                ...result,
-                capture: captureResult
+            console.log('[FeatureBridge] Listen service handler completed');
+
+            // Create serializable response - only include primitive data types
+            const serializableResult = {
+                success: true,
+                livekit: result.livekit || null, // Only include serializable LiveKit data
+                capture: captureResult ? {
+                    success: captureResult.success || false,
+                    // Don't include complex objects, only primitives
+                    message: captureResult.message || 'Capture started'
+                } : null
             };
-            
-            // Emit event for other services to listen
-            this.emit('listen:started', { data, result: combinedResult, windowId: event.sender.id });
-            
-            return { success: true, data: combinedResult };
+
+            // Validate the result is serializable before returning
+            try {
+                JSON.stringify(serializableResult);
+                console.log('[FeatureBridge] Response data is serializable');
+            } catch (error) {
+                console.error('[FeatureBridge] Response data is NOT serializable:', error);
+                // Return safe fallback
+                return {
+                    success: true,
+                    livekit: result.livekit ? {
+                        url: result.livekit.url,
+                        token: result.livekit.token,
+                        roomName: result.livekit.roomName
+                    } : null,
+                    capture: null
+                };
+            }
+
+            console.log('[FeatureBridge] Returning serializable result');
+            // Force plain-JSON cloning to eliminate any hidden prototypes/non-clonables
+            return JSON.parse(JSON.stringify(serializableResult));
         } catch (error) {
             console.error('[FeatureBridge] Listen start error:', error);
             this.emit('listen:error', { error: error.message, windowId: event.sender.id });
@@ -99,7 +145,7 @@ class FeatureBridge extends EventEmitter {
     async handleListenStop(event, data = {}) {
         try {
             console.log('[FeatureBridge] Listen stop requested:', data);
-            
+
             // Stop capture window if available
             let captureResult = null;
             try {
@@ -113,20 +159,27 @@ class FeatureBridge extends EventEmitter {
                 console.error('[FeatureBridge] Capture window error:', error);
                 // Continue without capture
             }
-            
+
             // Also call the original handler for system audio
             const handler = this.messageHandlers.get('listen:stop');
             const result = await handler(data);
-            
-            // Combine results
-            const combinedResult = {
-                ...result,
-                capture: captureResult
+
+            // Create serializable response
+            const serializableResult = {
+                success: true,
+                capture: captureResult ? {
+                    success: captureResult.success || false,
+                    message: captureResult.message || 'Capture stopped'
+                } : null
             };
-            
-            this.emit('listen:stopped', { data, result: combinedResult, windowId: event.sender.id });
-            
-            return { success: true, data: combinedResult };
+
+            this.emit('listen:stopped', {
+                data,
+                success: true,
+                windowId: event.sender.id
+            });
+
+            return serializableResult;
         } catch (error) {
             console.error('[FeatureBridge] Listen stop error:', error);
             this.emit('listen:error', { error: error.message, windowId: event.sender.id });

@@ -114,19 +114,47 @@ class CaptureWindow {
     }
 
     async invoke(channel, ...args) {
+        // Check if we're in LiveKit agent mode
+        const isAgentMode = args[0] && args[0].agentMode === true;
+        
+        if (isAgentMode) {
+            console.log(`[CaptureWindow] 🎯 LiveKit agent mode - bypassing ${channel} operation`);
+            console.log('[CaptureWindow] 🎯 LiveKit handles ALL audio capture internally');
+            
+            // Return success immediately for LiveKit mode
+            if (channel === 'capture:start') {
+                return {
+                    success: true,
+                    message: 'LiveKit handles audio capture internally - no capture controller needed'
+                };
+            } else if (channel === 'capture:stop') {
+                return {
+                    success: true,
+                    message: 'LiveKit audio capture stopped - no capture controller needed'
+                };
+            }
+            
+            // Default response for other operations in agent mode
+            return {
+                success: true,
+                message: `Operation ${channel} not needed in LiveKit agent mode`
+            };
+        }
+        
+        // For transcript mode, proceed with normal capture controller logic
         if (!this.window) {
             throw new Error('Capture window not created');
         }
         
         await this.waitForReady();
         
-        // For stop operations, ensure controller is available
-        if (channel === 'capture:stop') {
+        // For start/stop operations in transcript mode, ensure controller is available
+        if (channel === 'capture:start' || channel === 'capture:stop') {
             const controllerAvailable = await this.checkControllerAvailable();
             if (!controllerAvailable) {
-                console.log('[CaptureWindow] Controller not available for stop operation, waiting...');
+                console.log(`[CaptureWindow] Controller not available for ${channel.includes('start') ? 'start' : 'stop'} operation, waiting...`);
                 // Wait a bit more for controller to become available
-                for (let i = 0; i < 10; i++) {
+                for (let i = 0; i < 40; i++) { // up to ~8s total
                     await new Promise(resolve => setTimeout(resolve, 200));
                     const available = await this.checkControllerAvailable();
                     if (available) {
@@ -140,20 +168,43 @@ class CaptureWindow {
         return new Promise((resolve, reject) => {
             // Create a unique response channel
             const responseChannel = `${channel}-response-${Date.now()}`;
-            
+
+            // Validate args are serializable before sending
+            try {
+                for (let i = 0; i < args.length; i++) {
+                    JSON.stringify(args[i]);
+                }
+                console.log(`[CaptureWindow] Args for ${channel} are serializable`);
+            } catch (error) {
+                console.error(`[CaptureWindow] Args for ${channel} are NOT serializable:`, error);
+                reject(new Error('Cannot send non-serializable data through IPC'));
+                return;
+            }
+
             // Set up one-time listener for response
             const { ipcMain } = require('electron');
             ipcMain.once(responseChannel, (event, result) => {
+                // Validate result is serializable
+                try {
+                    JSON.stringify(result);
+                    console.log(`[CaptureWindow] Result from ${channel} is serializable`);
+                } catch (error) {
+                    console.error(`[CaptureWindow] Result from ${channel} is NOT serializable:`, error);
+                    reject(new Error('Received non-serializable data from renderer'));
+                    return;
+                }
+
                 if (result.success) {
                     resolve(result.data);
                 } else {
                     reject(new Error(result.error || 'Unknown error'));
                 }
             });
-            
+
             // Send the request with response channel
+            console.log(`[CaptureWindow] Sending ${channel} to renderer with ${args.length} args`);
             this.window.webContents.send(channel, responseChannel, ...args);
-            
+
             // Timeout after 15 seconds (increased for better reliability)
             setTimeout(() => {
                 ipcMain.removeAllListeners(responseChannel);

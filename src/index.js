@@ -9,9 +9,10 @@
 require('dotenv').config();
 
 // Handle Windows installer events
-if (require('electron-squirrel-startup')) {
-    process.exit(0);
-}
+// Commented out as it may cause issues on macOS
+// if (require('electron-squirrel-startup')) {
+//     process.exit(0);
+// }
 
 // Import Electron modules and Clueless services
 const { app, BrowserWindow, shell, ipcMain, dialog, desktopCapturer, session } = require('electron');
@@ -449,6 +450,41 @@ app.whenReady().then(async () => {
             });
             featureBridge.registerHandler('listen', 'status', async () => {
                 return listenService.getStatus();
+            });
+            
+            // Set up LiveKit event forwarding to listen window
+            listenService.setCallback('onLiveKitEvent', (event, data) => {
+                // Forward LiveKit events to the listen window
+                const listenWindow = windowPool.get('listen');
+                if (listenWindow && !listenWindow.isDestroyed()) {
+                    listenWindow.webContents.send(`livekit:${event}`, data);
+                }
+            });
+            
+            // Handle LiveKit events from renderer process
+            ipcMain.on('livekit:event', (event, { event: livekitEvent, data }) => {
+                console.log(`[Main] LiveKit event from renderer: ${livekitEvent}`, data);
+                // Forward to listen window if needed
+                const listenWindow = windowPool.get('listen');
+                if (listenWindow && !listenWindow.isDestroyed()) {
+                    listenWindow.webContents.send(`livekit:${livekitEvent}`, data);
+                }
+            });
+            
+            // Forward status updates to listen window
+            listenService.setCallback('onStatusUpdate', (status) => {
+                const listenWindow = windowPool.get('listen');
+                if (listenWindow && !listenWindow.isDestroyed()) {
+                    listenWindow.webContents.send('listen:status', status);
+                }
+            });
+            
+            // Forward errors to listen window
+            listenService.setCallback('onError', (error) => {
+                const listenWindow = windowPool.get('listen');
+                if (listenWindow && !listenWindow.isDestroyed()) {
+                    listenWindow.webContents.send('listen:error', error);
+                }
             });
             
             listenIPCHandlers.initialize();

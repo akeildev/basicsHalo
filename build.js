@@ -30,7 +30,7 @@ const buildOptions = {
     '.tsx': 'tsx',
     '.css': 'css'
   },
-  external: ['electron'],
+  external: ['electron', 'livekit-client'],
   plugins: [
     {
       name: 'copy-assets',
