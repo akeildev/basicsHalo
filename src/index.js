@@ -239,7 +239,18 @@ async function initializeServices() {
         // 5. Initialize bridges (already imported and will be set up)
         console.log('[Lifecycle] ✅ Bridges ready');
         
-        // 6. Initialize web server
+        // 6. Initialize screenshot bridge for Python agent
+        console.log('[Lifecycle] Starting screenshot bridge...');
+        try {
+            const screenshotBridge = require('./services/screenshotBridge');
+            await screenshotBridge.start();
+            console.log('[Lifecycle] ✅ Screenshot bridge started');
+        } catch (error) {
+            console.error('[Lifecycle] ⚠️ Screenshot bridge failed to start:', error);
+            // Non-critical service, continue initialization
+        }
+        
+        // 7. Initialize web server
         console.log('[Lifecycle] Starting web server...');
         await startWebServer();
         console.log('[Lifecycle] ✅ Web server started');
@@ -352,6 +363,15 @@ async function gracefulShutdown() {
         // Clean up database connections
         console.log('[Lifecycle] Cleaning up database...');
         // Database cleanup logic here
+        
+        // Stop screenshot bridge
+        console.log('[Lifecycle] Stopping screenshot bridge...');
+        try {
+            const screenshotBridge = require('./services/screenshotBridge');
+            screenshotBridge.stop();
+        } catch (error) {
+            console.error('[Lifecycle] Error stopping screenshot bridge:', error);
+        }
         
         console.log('[Lifecycle] ✅ Graceful shutdown completed');
         
