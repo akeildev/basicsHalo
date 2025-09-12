@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAudioMetrics: () => ipcRenderer.invoke('audio:getMetrics'),
     resetAudioProcessor: () => ipcRenderer.invoke('audio:reset'),
     updateEchoCancellation: (config) => ipcRenderer.invoke('audio:updateEchoCancellation', config),
+    setMicrophoneMute: (muted) => ipcRenderer.invoke('audio:setMicrophoneMute', muted),
     
     // Events
     onTranscriptionUpdate: (callback) => ipcRenderer.on('transcription:update', callback),

@@ -7,9 +7,8 @@ Integrates OpenAI Realtime (STT/LLM), ElevenLabs (TTS), and Silero VAD
 import asyncio
 import logging
 import os
-import base64
 import aiohttp
-from typing import Annotated, Optional
+from typing import Optional
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
@@ -23,8 +22,6 @@ from livekit.agents.voice import AgentSession
 from livekit.plugins import openai, elevenlabs, silero
 from openai.types.beta.realtime.session import InputAudioTranscription
 from openai import AsyncOpenAI
-from datetime import datetime
-import json
 
 # Configure logging
 logger = logging.getLogger("halo-agent")
@@ -73,7 +70,7 @@ class HaloVoiceAgent:
                 ),
             ),
             tts=elevenlabs.TTS(
-                voice_id="EXAVITQu4vr4xnSDxMaL",  # Rachel voice
+                voice_id="ThT5KcBeYPX3keUQqHPh",  # Rachel voice
                 model="eleven_turbo_v2",
                 language="en",
             ),
@@ -95,7 +92,7 @@ class HaloVoiceAgent:
         """Send initial greeting to user"""
         greeting = self.metadata.get(
             "greeting",
-            "Hello! I'm your Halo assistant. How can I help you today?"
+            "Hello and welcome to Halo. I can understand your screen and guide you through anything you might need help with. Just let me know."
         )
         
         # Send greeting - let RealtimeModel handle turn detection
@@ -224,11 +221,6 @@ class HaloVoiceAgent:
             logger.error(f"GPT-4o vision analysis error: {e}")
             raise Exception(f"Could not analyze the screenshot: {str(e)}")
     
-    async def handle_tools(self):
-        """Handle tool calls from the agent"""
-        # This can be extended to handle various tools
-        # For now, we'll keep it simple
-        pass
 
 
 async def entrypoint(ctx: JobContext):

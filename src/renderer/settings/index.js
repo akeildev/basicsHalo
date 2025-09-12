@@ -30,6 +30,9 @@ class SettingsWindow {
         this.autoStartListening = document.getElementById('autoStartListening');
         this.showNotifications = document.getElementById('showNotifications');
 
+        // Privacy & Appearance
+        this.screenInvisibility = document.getElementById('screenInvisibility');
+
         // Advanced
         this.apiTimeout = document.getElementById('apiTimeout');
         this.maxRetries = document.getElementById('maxRetries');
@@ -148,6 +151,9 @@ class SettingsWindow {
         this.autoStartListening.checked = this.settings.autoStartListening || false;
         this.showNotifications.checked = this.settings.showNotifications !== false; // Default true
 
+        // Privacy & Appearance
+        this.screenInvisibility.checked = this.settings.screenInvisibility || false;
+
         // Advanced
         this.apiTimeout.value = this.settings.apiTimeout || 30;
         this.maxRetries.value = this.settings.maxRetries || 3;
@@ -174,6 +180,9 @@ class SettingsWindow {
                 transcriptionLanguage: this.transcriptionLanguage.value,
                 autoStartListening: this.autoStartListening.checked,
                 showNotifications: this.showNotifications.checked,
+
+                // Privacy & Appearance
+                screenInvisibility: this.screenInvisibility.checked,
 
                 // Advanced
                 apiTimeout: parseInt(this.apiTimeout.value) || 30,

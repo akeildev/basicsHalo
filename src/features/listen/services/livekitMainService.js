@@ -113,7 +113,7 @@ class LiveKitMainService extends EventEmitter {
                 console.log('[LiveKitMainService] 🤖 STARTING PYTHON AGENT');
                 console.log('========================================');
                 
-                const agentPath = path.join(__dirname, '..', '..', '..', 'agent', 'voice_agent.py');
+                const agentPath = path.join(__dirname, '..', '..', '..', 'agent', 'voice_agent_with_mcp.py');
                 console.log('[LiveKitMainService] Agent path:', agentPath);
                 
                 // Get OpenAI API key from settings

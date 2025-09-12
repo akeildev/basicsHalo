@@ -4,6 +4,7 @@ class ListenWindow {
     constructor() {
         this.isListening = false;
         this.livekitClient = null;
+        this.isMuted = false;
         
         this.initializeElements();
         this.setupEventListeners();
@@ -21,12 +22,22 @@ class ListenWindow {
         
         // Control elements
         this.voiceBtn = document.getElementById('voiceBtn');
+        this.muteBtn = document.getElementById('muteBtn');
         this.statusText = document.getElementById('statusText');
+        
+        // Mute button icons
+        if (this.muteBtn) {
+            this.micIcon = this.muteBtn.querySelector('.mic-icon');
+            this.micOffIcon = this.muteBtn.querySelector('.mic-off-icon');
+        }
     }
 
     setupEventListeners() {
         // Voice button - click to toggle
         this.voiceBtn.addEventListener('click', () => this.toggleListening());
+        
+        // Mute button
+        this.muteBtn.addEventListener('click', () => this.toggleMute());
         
         // Clear button
         this.clearBtn.addEventListener('click', () => this.clearMessages());
@@ -274,6 +285,103 @@ class ListenWindow {
     updateListeningStatus(isListening) {
         this.isListening = isListening;
         this.updateUI(isListening);
+    }
+
+    async toggleMute() {
+        try {
+            // Debounce rapid clicks
+            if (this.muteBtn.disabled) {
+                console.log('[Listen] Mute button disabled, ignoring click');
+                return;
+            }
+            
+            // Disable button temporarily to prevent double-clicks
+            this.muteBtn.disabled = true;
+            
+            this.isMuted = !this.isMuted;
+            
+            // Update UI immediately for better UX
+            this.updateMuteUI(this.isMuted);
+            
+            // CRITICAL: If we're using LiveKit (agent mode), mute the LiveKit client directly
+            if (this.livekitClient && this.livekitClient.isConnected) {
+                console.log('[Listen] Muting LiveKit client directly in renderer');
+                const livekitResult = await this.livekitClient.setMicrophoneMuted(this.isMuted);
+                
+                if (!livekitResult.success) {
+                    console.error('[Listen] LiveKit mute failed:', livekitResult.error);
+                    // Revert UI if LiveKit mute failed
+                    this.isMuted = !this.isMuted;
+                    this.updateMuteUI(this.isMuted);
+                    
+                    // Only show error if it's not "already muted"
+                    if (!livekitResult.error.includes('already')) {
+                        this.addMessage('error', 'Failed to mute microphone: ' + livekitResult.error);
+                    }
+                } else {
+                    // Update status text with immediate feedback
+                    if (this.isMuted) {
+                        this.addMessage('system', '🔇 Microphone muted');
+                        this.updateStatus('Muted - Agent cannot hear you');
+                    } else {
+                        this.addMessage('system', '🎤 Microphone unmuted');  
+                        this.updateStatus('Connected - Ready to talk');
+                        // Small delay message for unmute
+                        setTimeout(() => {
+                            if (!this.isMuted && this.isListening) {
+                                this.updateStatus('Connected - Listening');
+                            }
+                        }, 1000);
+                    }
+                }
+            } else {
+                // Fallback to backend mute for non-LiveKit mode
+                const result = await window.electronAPI.setMicrophoneMute(this.isMuted);
+                
+                if (result.success) {
+                    // Update status text
+                    if (this.isMuted) {
+                        this.addMessage('system', '🔇 Microphone muted');
+                    } else {
+                        this.addMessage('system', '🎤 Microphone unmuted');
+                    }
+                } else {
+                    // Revert UI if mute failed
+                    this.isMuted = !this.isMuted;
+                    this.updateMuteUI(this.isMuted);
+                    this.addMessage('error', 'Failed to toggle mute: ' + (result.error || 'Unknown error'));
+                }
+            }
+        } catch (error) {
+            console.error('[Listen] Mute toggle error:', error);
+            // Revert UI on error
+            this.isMuted = !this.isMuted;
+            this.updateMuteUI(this.isMuted);
+            
+            // Only show error for real errors, not expected states
+            if (!error.message || !error.message.includes('already')) {
+                this.addMessage('error', 'Failed to toggle mute');
+            }
+        } finally {
+            // Re-enable button after a short delay
+            setTimeout(() => {
+                this.muteBtn.disabled = false;
+            }, 500);
+        }
+    }
+
+    updateMuteUI(muted) {
+        if (muted) {
+            this.muteBtn.classList.add('muted');
+            this.muteBtn.title = 'Unmute microphone';
+            this.micIcon.style.display = 'none';
+            this.micOffIcon.style.display = 'block';
+        } else {
+            this.muteBtn.classList.remove('muted');
+            this.muteBtn.title = 'Mute microphone';
+            this.micIcon.style.display = 'block';
+            this.micOffIcon.style.display = 'none';
+        }
     }
 }
 

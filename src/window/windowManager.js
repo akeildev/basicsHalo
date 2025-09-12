@@ -1,12 +1,10 @@
-const { BrowserWindow, globalShortcut, screen, app, shell } = require('electron');
+const { BrowserWindow, screen, app } = require('electron');
 const WindowLayoutManager = require('./windowLayoutManager');
 const SmoothMovementManager = require('./smoothMovementManager');
 const windowStateService = require('../services/windowStateService');
 const path = require('node:path');
 const os = require('os');
-const shortcutsService = require('../features/shortcuts/shortcutsService');
 const internalBridge = require('../bridge/internalBridge');
-const permissionRepository = require('../features/common/repositories/permission');
 
 /* ────────────────[ CLUELESS BYPASS ]─────────────── */
 let liquidGlass;
@@ -30,18 +28,14 @@ if (shouldUseLiquidClueless) {
 /* ────────────────[ CLUELESS BYPASS ]─────────────── */
 
 let isContentProtectionOn = true;
-let lastVisibleWindows = new Set(['header']);
 
-let currentHeaderState = 'apikey';
 const windowPool = new Map();
 
-let settingsHideTimer = null;
 
 let layoutManager = null;
 let movementManager = null;
 
 // Debounced reflow on display changes
-let displayReflowTimer = null;
 let displayUpdateTimer = null;
 let cachedDisplays = [];
 function reflowAllWindows() {

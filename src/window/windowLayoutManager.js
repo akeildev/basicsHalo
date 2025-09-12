@@ -97,6 +97,11 @@ class WindowLayoutManager {
         const settingsB = settingsVis ? settings.getBounds() : null;
 
         const layout = {};
+        
+        // Define consistent window dimensions
+        const LISTEN_HEIGHT = 220;
+        const ASK_HEIGHT = 480;
+        const SETTINGS_HEIGHT = 500;
 
         // Handle different combinations of visible windows
         if (askVis && listenVis && settingsVis) {
@@ -110,21 +115,21 @@ class WindowLayoutManager {
 
             layout.ask = {
                 x: Math.round(startX + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: askB.width,
-                height: askB.height
+                height: ASK_HEIGHT
             };
             layout.listen = {
                 x: Math.round(startX + askB.width + PAD + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: listenB.width,
-                height: listenB.height
+                height: LISTEN_HEIGHT
             };
             layout.settings = {
                 x: Math.round(startX + askB.width + listenB.width + 2 * PAD + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: settingsB.width,
-                height: settingsB.height
+                height: SETTINGS_HEIGHT
             };
         } else if (askVis && listenVis) {
             // Start with ask centered under header; listen to the left
@@ -146,29 +151,29 @@ class WindowLayoutManager {
                 const windowBottomAbs = headerBounds.y - PAD;
                 layout.ask = {
                     x: Math.round(askXRel + workAreaX),
-                    y: Math.round(windowBottomAbs - askB.height),
+                    y: Math.round(windowBottomAbs - ASK_HEIGHT),
                     width: askB.width,
-                    height: askB.height
+                    height: ASK_HEIGHT
                 };
                 layout.listen = {
                     x: Math.round(listenXRel + workAreaX),
-                    y: Math.round(windowBottomAbs - listenB.height),
+                    y: Math.round(windowBottomAbs - LISTEN_HEIGHT),
                     width: listenB.width,
-                    height: listenB.height
+                    height: LISTEN_HEIGHT
                 };
             } else {
-                const yAbs = headerBounds.y + headerBounds.height + PAD;
+                const yAbs = headerBounds.y + headerBounds.height - 30; // Overlap to eliminate gap
                 layout.ask = {
                     x: Math.round(askXRel + workAreaX),
                     y: Math.round(yAbs),
                     width: askB.width,
-                    height: askB.height
+                    height: ASK_HEIGHT
                 };
                 layout.listen = {
                     x: Math.round(listenXRel + workAreaX),
                     y: Math.round(yAbs),
                     width: listenB.width,
-                    height: listenB.height
+                    height: LISTEN_HEIGHT
                 };
             }
         } else if (askVis && settingsVis) {
@@ -184,15 +189,15 @@ class WindowLayoutManager {
 
             layout.ask = {
                 x: Math.round(askXRel + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: askB.width,
-                height: askB.height
+                height: ASK_HEIGHT
             };
             layout.settings = {
                 x: Math.round(settingsXRel + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: settingsB.width,
-                height: settingsB.height
+                height: SETTINGS_HEIGHT
             };
         } else if (listenVis && settingsVis) {
             // Listen and settings visible - center listen, settings to the right
@@ -207,20 +212,21 @@ class WindowLayoutManager {
 
             layout.listen = {
                 x: Math.round(listenXRel + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: listenB.width,
-                height: listenB.height
+                height: LISTEN_HEIGHT
             };
             layout.settings = {
                 x: Math.round(settingsXRel + workAreaX),
-                y: Math.round(headerBounds.y + headerBounds.height + PAD),
+                y: Math.round(headerBounds.y + headerBounds.height - 30),
                 width: settingsB.width,
-                height: settingsB.height
+                height: SETTINGS_HEIGHT
             };
         } else {
             // Only one window visible
             const winName = askVis ? 'ask' : listenVis ? 'listen' : 'settings';
             const winB = askVis ? askB : listenVis ? listenB : settingsB;
+            const winHeight = askVis ? ASK_HEIGHT : listenVis ? LISTEN_HEIGHT : SETTINGS_HEIGHT;
             if (!winB) return {};
 
             let xRel = headerCenterXRel - winB.width / 2;
@@ -228,16 +234,16 @@ class WindowLayoutManager {
 
             let yPos;
             if (strategy.primary === 'above') {
-                yPos = (headerBounds.y - workAreaY) - PAD - winB.height;
+                yPos = (headerBounds.y - workAreaY) - PAD - winHeight;
             } else {
-                yPos = (headerBounds.y - workAreaY) + headerBounds.height + PAD;
+                yPos = (headerBounds.y - workAreaY) + headerBounds.height - 30; // Overlap for listen window
             }
 
             layout[winName] = {
                 x: Math.round(xRel + workAreaX),
                 y: Math.round(yPos + workAreaY),
                 width: winB.width,
-                height: winB.height
+                height: winHeight
             };
         }
 
@@ -260,7 +266,7 @@ class WindowLayoutManager {
         if (headerBounds) {
             if (strategy.primary === 'below') {
                 x = headerBounds.x;
-                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
+                y = headerBounds.y + headerBounds.height - 30; // 30px overlap to eliminate gap
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x;
                 y = headerBounds.y - finalHeight - 4; // Reduced gap
@@ -300,7 +306,7 @@ class WindowLayoutManager {
         if (headerBounds) {
             if (strategy.primary === 'below') {
                 x = headerBounds.x + headerBounds.width - finalWidth;
-                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
+                y = headerBounds.y + headerBounds.height - 30; // 30px overlap to eliminate gap
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x + headerBounds.width - finalWidth;
                 y = headerBounds.y - finalHeight - 4; // Reduced gap
@@ -341,7 +347,7 @@ class WindowLayoutManager {
             // Prefer below/above; align near right edge (settings button area)
             if (strategy.primary === 'below') {
                 x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
-                y = headerBounds.y + headerBounds.height + 4; // Reduced gap from 10 to 4
+                y = headerBounds.y + headerBounds.height - 30; // 30px overlap to eliminate gap
             } else if (strategy.primary === 'above') {
                 x = headerBounds.x + Math.max(0, headerBounds.width - finalWidth);
                 y = headerBounds.y - finalHeight - 4; // Reduced gap

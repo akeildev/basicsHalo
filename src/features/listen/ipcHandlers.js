@@ -1,4 +1,4 @@
-const { ipcMain, desktopCapturer } = require('electron');
+const { ipcMain } = require('electron');
 const listenService = require('./listenService');
 const listenCapture = require('./services/listenCapture');
 const permissionService = require('./services/permissionService');
@@ -260,6 +260,31 @@ class ListenIPCHandlers {
                 return { success: true };
             } catch (error) {
                 console.error('[ListenIPC] Update echo cancellation error:', error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // Set microphone mute state
+        ipcMain.handle('audio:setMicrophoneMute', async (event, muted) => {
+            console.log(`\n[ListenIPC] 🎤 Received mute request from renderer: ${muted ? 'MUTE' : 'UNMUTE'}`);
+            console.log('[ListenIPC] Timestamp:', new Date().toISOString());
+            
+            try {
+                console.log('[ListenIPC] Forwarding to listenService.setMicrophoneMute()...');
+                const result = await listenService.setMicrophoneMute(muted);
+                
+                console.log('[ListenIPC] Result from service:', JSON.stringify(result));
+                
+                if (!result.success) {
+                    console.error('[ListenIPC] ❌ Mute operation failed:', result.error);
+                } else {
+                    console.log('[ListenIPC] ✅ Mute operation succeeded');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('[ListenIPC] ❌ Exception during mute operation:', error);
+                console.error('[ListenIPC] Stack:', error.stack);
                 return { success: false, error: error.message };
             }
         });

@@ -12,6 +12,7 @@ class LiveKitClient {
         this.remoteTracks = new Map();
         this.isConnected = false;
         this.livekitAPI = null;
+        this.isMuted = false;  // Track mute state
         
         console.log('[LiveKitClient] Initialized in renderer process');
     }
@@ -112,8 +113,12 @@ class LiveKitClient {
             console.log('[LiveKitClient] Successfully connected to room:', this.room.name);
             console.log('[LiveKitClient] Local participant:', this.room.localParticipant?.identity);
             
-            // Create and publish local microphone track
-            await this.publishMicrophone();
+            // Create and publish local microphone track (only if not muted)
+            if (!this.isMuted) {
+                await this.publishMicrophone();
+            } else {
+                console.log('[LiveKitClient] Skipping microphone publish - already muted');
+            }
             
             return { success: true };
         } catch (error) {
@@ -320,6 +325,92 @@ class LiveKitClient {
         }
     }
     
+    /**
+     * Mute/unmute the local microphone
+     */
+    async setMicrophoneMuted(muted) {
+        try {
+            // Store mute state
+            this.isMuted = muted;
+            
+            if (!this.room || !this.room.localParticipant) {
+                console.error('[LiveKitClient] Cannot mute: not connected to room');
+                return { success: false, error: 'Not connected to room' };
+            }
+
+            if (!this.livekitAPI) {
+                console.error('[LiveKitClient] LiveKit API not loaded');
+                return { success: false, error: 'LiveKit API not loaded' };
+            }
+
+            const { Track } = this.livekitAPI;
+            console.log(`[LiveKitClient] ${muted ? 'MUTING' : 'UNMUTING'} microphone`);
+            
+            if (muted) {
+                // Find and unpublish ALL audio tracks
+                const audioPublications = Array.from(this.room.localParticipant.trackPublications.values())
+                    .filter(pub => pub.track && pub.track.kind === Track.Kind.Audio);
+                
+                console.log(`[LiveKitClient] Found ${audioPublications.length} audio track(s) to unpublish`);
+                
+                for (const audioPublication of audioPublications) {
+                    console.log('[LiveKitClient] Unpublishing audio track:', audioPublication.trackName);
+                    await this.room.localParticipant.unpublishTrack(audioPublication.track);
+                    
+                    // Only stop the track if it exists and has a stop method
+                    if (audioPublication.track && typeof audioPublication.track.stop === 'function') {
+                        audioPublication.track.stop();
+                    }
+                    
+                    this.localTracks = this.localTracks.filter(t => t !== audioPublication.track);
+                }
+                
+                if (audioPublications.length === 0) {
+                    console.log('[LiveKitClient] No audio tracks to unpublish - already muted');
+                } else {
+                    console.log('[LiveKitClient] ✅ All audio tracks unpublished and stopped');
+                }
+            } else {
+                // Check if we already have an audio track
+                const existingAudio = Array.from(this.room.localParticipant.trackPublications.values())
+                    .find(pub => pub.track && pub.track.kind === Track.Kind.Audio);
+                
+                if (existingAudio) {
+                    console.log('[LiveKitClient] Audio track already exists - skipping creation');
+                    return { success: true };
+                }
+                
+                // Create and publish a new audio track
+                console.log('[LiveKitClient] Creating new audio track');
+                const tracks = await this.livekitAPI.createLocalTracks({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                    video: false,
+                });
+                
+                for (const track of tracks) {
+                    if (track.kind === Track.Kind.Audio) {
+                        await this.room.localParticipant.publishTrack(track, {
+                            name: 'microphone',
+                            source: Track.Source.Microphone,
+                        });
+                        this.localTracks.push(track);
+                        console.log('[LiveKitClient] ✅ New audio track published');
+                    }
+                }
+            }
+            
+            return { success: true };
+        } catch (error) {
+            console.error('[LiveKitClient] Error setting microphone mute:', error);
+            console.error('[LiveKitClient] Error stack:', error.stack);
+            return { success: false, error: error.message };
+        }
+    }
+
     /**
      * Get connection status
      */

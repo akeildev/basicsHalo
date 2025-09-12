@@ -4,7 +4,6 @@ const listenCapture = require('./services/listenCapture');
 const platformAudioCapture = require('./services/platformAudioCapture');
 const audioProcessor = require('./services/audioProcessor');
 const LiveKitMainService = require('./services/livekitMainService');
-const { v4: uuidv4 } = require('uuid');
 
 class ListenService {
     constructor() {
@@ -689,6 +688,80 @@ class ListenService {
                 audioChunks: this.audioChunks.length
             }
         };
+    }
+
+    /**
+     * Set microphone mute state
+     */
+    async setMicrophoneMute(muted) {
+        try {
+            console.log('\n========================================');
+            console.log(`[ListenService] 🎯 MUTE REQUEST RECEIVED`);
+            console.log(`[ListenService] Requested state: ${muted ? 'MUTE' : 'UNMUTE'}`);
+            console.log(`[ListenService] Current mode: ${this.agentMode ? 'AGENT' : 'TRANSCRIPT'}`);
+            console.log(`[ListenService] Is listening: ${this.isListening}`);
+            console.log(`[ListenService] LiveKit available: ${!!this.livekit}`);
+            console.log(`[ListenService] LiveKit room exists: ${!!this.livekit?.room}`);
+            console.log('========================================\n');
+            
+            // If in agent mode, use LiveKit mute
+            if (this.agentMode && this.livekit) {
+                console.log('[ListenService] 🤖 AGENT MODE - Forwarding to LiveKit service');
+                
+                // Check if LiveKit service has the room
+                if (this.livekit.room) {
+                    console.log('[ListenService] LiveKit room is active, calling setMicrophoneMuted()');
+                    const result = await this.livekit.setMicrophoneMuted(muted);
+                    
+                    if (result.success) {
+                        console.log(`[ListenService] ✅ LiveKit mute operation successful`);
+                        this.notifyStatusUpdate({ microphoneMuted: muted });
+                    } else {
+                        console.error(`[ListenService] ❌ LiveKit mute operation failed:`, result.error);
+                    }
+                    
+                    return result;
+                } else {
+                    // Store mute state for when connection is established
+                    this.pendingMuteState = muted;
+                    console.log(`[ListenService] ⏳ LiveKit not connected yet, storing mute state: ${muted}`);
+                    this.notifyStatusUpdate({ microphoneMuted: muted });
+                    return { success: true, pending: true };
+                }
+            }
+            
+            // For transcript mode, mute the capture service
+            if (!this.agentMode && this.capture) {
+                // Even if microphone stream doesn't exist yet, store the state
+                this.microphoneWasMuted = muted;
+                
+                if (this.capture.microphone && this.capture.microphone.stream) {
+                    // Disable/enable all audio tracks
+                    this.capture.microphone.stream.getAudioTracks().forEach(track => {
+                        track.enabled = !muted;
+                    });
+                    console.log(`[ListenService] Transcript mode: Microphone ${muted ? 'muted' : 'unmuted'}`);
+                } else {
+                    console.log(`[ListenService] Transcript mode: Microphone will be ${muted ? 'muted' : 'unmuted'} when started`);
+                }
+                
+                this.notifyStatusUpdate({ microphoneMuted: muted });
+                return { success: true };
+            }
+            
+            // Default case - just store the state
+            this.microphoneWasMuted = muted;
+            this.notifyStatusUpdate({ microphoneMuted: muted });
+            console.log(`[ListenService] Mute state stored: ${muted}`);
+            return { success: true };
+            
+        } catch (error) {
+            console.error('[ListenService] Error setting microphone mute:', error);
+            return { 
+                success: false, 
+                error: error.message 
+            };
+        }
     }
 
     /**

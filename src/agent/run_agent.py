@@ -74,8 +74,8 @@ def run_agent():
     # Set up environment
     setup_environment()
     
-    # Get the path to the voice agent script
-    agent_path = Path(__file__).parent / "voice_agent.py"
+    # Get the path to the voice agent script WITH MCP support
+    agent_path = Path(__file__).parent / "voice_agent_with_mcp.py"
     
     logger.info("\n" + "="*50)
     logger.info(f"📍 Agent script: {agent_path}")

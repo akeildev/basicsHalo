@@ -179,6 +179,15 @@ body {
     gap: 12px;
 }
 
+.setting-description {
+    display: block;
+    margin-top: 4px;
+    margin-left: 24px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+}
+
 .btn {
     padding: 10px 16px;
     border: none;

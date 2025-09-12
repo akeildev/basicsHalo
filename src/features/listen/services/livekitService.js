@@ -25,6 +25,7 @@ class LiveKitService extends EventEmitter {
         this.remoteTracks = new Map();
         this.isConnected = false;
         this.agentProcess = null;
+        this.mutedAudioTrack = null; // Store muted audio track for republishing
         
         // Audio context for playback
         this.audioContext = null;
@@ -440,12 +441,160 @@ class LiveKitService extends EventEmitter {
      * Mute/unmute local audio
      */
     async setMicrophoneMuted(muted) {
-        for (const track of this.localTracks) {
-            if (track.kind === Track.Kind.Audio) {
-                await track.setMuted(muted);
-                console.log('[LiveKitService] Microphone muted:', muted);
-                this.emit('microphoneMuted', { muted });
+        console.log('\n========================================');
+        console.log(`[LiveKitService] 🎤 MUTE REQUEST: ${muted ? 'MUTE' : 'UNMUTE'}`);
+        console.log('========================================');
+        
+        try {
+            // Step 1: Validate room connection
+            if (!this.room) {
+                console.error('[LiveKitService] ❌ ERROR: No room object');
+                return { success: false, error: 'Not connected to room' };
             }
+            
+            if (!this.room.localParticipant) {
+                console.error('[LiveKitService] ❌ ERROR: No local participant');
+                return { success: false, error: 'No local participant in room' };
+            }
+            
+            console.log(`[LiveKitService] ✅ Room connected: ${this.room.name}`);
+            console.log(`[LiveKitService] ✅ Local participant: ${this.room.localParticipant.identity}`);
+            
+            // Step 2: List ALL participants in the room
+            console.log('[LiveKitService] 📋 Room participants:');
+            console.log(`  - Local: ${this.room.localParticipant.identity}`);
+            this.room.remoteParticipants.forEach((participant, sid) => {
+                console.log(`  - Remote: ${participant.identity} (SID: ${sid})`);
+                // Check what tracks they're subscribed to
+                participant.trackPublications.forEach((pub, trackSid) => {
+                    if (pub.track && pub.track.kind === Track.Kind.Audio) {
+                        console.log(`    📻 Subscribed to audio track: ${trackSid}`);
+                    }
+                });
+            });
+
+            // Step 3: List current track publications
+            console.log('[LiveKitService] 🔍 Current LOCAL track publications:');
+            let audioPublicationCount = 0;
+            this.room.localParticipant.trackPublications.forEach((pub, sid) => {
+                const trackInfo = `SID: ${sid}, Kind: ${pub.track?.kind}, Source: ${pub.track?.source}, Muted: ${pub.track?.isMuted}, MediaStreamTrack.enabled: ${pub.track?.mediaStreamTrack?.enabled}`;
+                console.log(`  - ${trackInfo}`);
+                if (pub.track && pub.track.kind === Track.Kind.Audio) {
+                    audioPublicationCount++;
+                }
+            });
+            
+            if (audioPublicationCount > 1) {
+                console.warn(`[LiveKitService] ⚠️ WARNING: Multiple audio tracks found (${audioPublicationCount})`);
+            }
+
+            // Step 4: Find the audio track publication
+            const audioPublication = Array.from(this.room.localParticipant.trackPublications.values())
+                .find(pub => pub.track && pub.track.kind === Track.Kind.Audio);
+            
+            if (!audioPublication || !audioPublication.track) {
+                console.error('[LiveKitService] ❌ ERROR: No audio track found in publications');
+                console.error('[LiveKitService] Local tracks array:', this.localTracks);
+                return { success: false, error: 'No audio track found' };
+            }
+            
+            console.log(`[LiveKitService] 📢 Found audio track:`);
+            console.log(`  - Track SID: ${audioPublication.trackSid}`);
+            console.log(`  - Is Muted: ${audioPublication.track.isMuted}`);
+            console.log(`  - MediaStreamTrack ID: ${audioPublication.track.mediaStreamTrack?.id}`);
+            console.log(`  - MediaStreamTrack enabled: ${audioPublication.track.mediaStreamTrack?.enabled}`);
+            console.log(`  - MediaStreamTrack readyState: ${audioPublication.track.mediaStreamTrack?.readyState}`);
+
+            if (muted) {
+                console.log('[LiveKitService] 🔇 === MUTING PROCESS START ===');
+                
+                // Step 5a: Unpublish the track
+                console.log('[LiveKitService] Step 1: Unpublishing track...');
+                await this.room.localParticipant.unpublishTrack(audioPublication.track);
+                console.log('[LiveKitService] ✅ Track unpublished');
+                
+                // Step 5b: Stop the track completely
+                console.log('[LiveKitService] Step 2: Stopping track...');
+                const trackId = audioPublication.track.mediaStreamTrack?.id;
+                audioPublication.track.stop();
+                console.log(`[LiveKitService] ✅ Track stopped (was ID: ${trackId})`);
+                
+                // Step 5c: Remove from local tracks array
+                const beforeCount = this.localTracks.length;
+                this.localTracks = this.localTracks.filter(t => t !== audioPublication.track);
+                const afterCount = this.localTracks.length;
+                console.log(`[LiveKitService] ✅ Removed from local tracks (${beforeCount} -> ${afterCount})`);
+                
+                // Verify mute state
+                console.log('[LiveKitService] 🔍 Post-mute verification:');
+                console.log(`  - Publications count: ${this.room.localParticipant.trackPublications.size}`);
+                console.log(`  - Local tracks count: ${this.localTracks.length}`);
+                
+                console.log('[LiveKitService] 🔇 === MUTING COMPLETE ===');
+            } else {
+                console.log('[LiveKitService] 🔊 === UNMUTING PROCESS START ===');
+                
+                // Step 6a: Create a fresh audio track
+                console.log('[LiveKitService] Step 1: Creating new audio track...');
+                const tracks = await createLocalTracks({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                    video: false,
+                });
+                console.log(`[LiveKitService] ✅ Created ${tracks.length} track(s)`);
+                
+                // Step 6b: Publish the new audio track
+                for (const track of tracks) {
+                    if (track.kind === Track.Kind.Audio) {
+                        console.log('[LiveKitService] Step 2: Publishing new audio track...');
+                        console.log(`  - New MediaStreamTrack ID: ${track.mediaStreamTrack?.id}`);
+                        console.log(`  - New MediaStreamTrack enabled: ${track.mediaStreamTrack?.enabled}`);
+                        
+                        const publication = await this.room.localParticipant.publishTrack(track, {
+                            name: 'microphone',
+                            source: Track.Source.Microphone,
+                        });
+                        
+                        console.log(`[LiveKitService] ✅ Track published with SID: ${publication.trackSid}`);
+                        
+                        this.localTracks.push(track);
+                        console.log(`[LiveKitService] ✅ Added to local tracks (count: ${this.localTracks.length})`);
+                    }
+                }
+                
+                // Verify unmute state
+                console.log('[LiveKitService] 🔍 Post-unmute verification:');
+                console.log(`  - Publications count: ${this.room.localParticipant.trackPublications.size}`);
+                console.log(`  - Local tracks count: ${this.localTracks.length}`);
+                
+                // Check remote participants again
+                console.log('[LiveKitService] 📋 Remote participants post-unmute:');
+                this.room.remoteParticipants.forEach((participant, sid) => {
+                    console.log(`  - ${participant.identity}: ${participant.trackPublications.size} tracks`);
+                });
+                
+                console.log('[LiveKitService] 🔊 === UNMUTING COMPLETE ===');
+            }
+            
+            console.log('\n========================================');
+            console.log(`[LiveKitService] ✅ MUTE OPERATION SUCCESSFUL: ${muted ? 'MUTED' : 'UNMUTED'}`);
+            console.log('========================================\n');
+            
+            this.emit('microphoneMuted', { muted });
+            return { success: true };
+            
+        } catch (error) {
+            console.error('\n========================================');
+            console.error('[LiveKitService] ❌❌❌ CRITICAL ERROR ❌❌❌');
+            console.error('[LiveKitService] Error Type:', error.constructor.name);
+            console.error('[LiveKitService] Error Message:', error.message);
+            console.error('[LiveKitService] Error Stack:', error.stack);
+            console.error('========================================\n');
+            
+            return { success: false, error: error.message };
         }
     }
     

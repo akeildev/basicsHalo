@@ -8,3 +8,7 @@ livekit-plugins-silero
 python-dotenv
 aiohttp
 numpy
+
+# MCP Integration
+websockets  # For WebSocket transport in MCP
+jsonschema  # Optional: for validating tool arguments

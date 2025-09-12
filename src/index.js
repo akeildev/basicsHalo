@@ -24,13 +24,9 @@ const databaseInitializer = require('./features/common/services/databaseInitiali
 const authService = require('./features/common/services/authService');
 const path = require('node:path');
 const express = require('express');
-const fetch = require('node-fetch');
-const { autoUpdater } = require('electron-updater');
 const { EventEmitter } = require('events');
 const askService = require('./features/ask/askService');
 const askIPCHandlers = require('./features/ask/ipcHandlers');
-const settingsService = require('./features/settings/settingsService');
-const sessionRepository = require('./features/common/repositories/session');
 const modelStateService = require('./features/common/services/modelStateService');
 const featureBridge = require('./bridge/featureBridge');
 const windowBridge = require('./bridge/windowBridge');
@@ -40,10 +36,8 @@ const splashService = require('./services/SplashService');
 const configService = require('./services/ConfigService');
 const encryptionService = require('./services/EncryptionService');
 const settingsStoreService = require('./features/settings/settingsService');
-const PathUtils = require('./utils/PathUtils');
 
 // Global variables
-const eventBridge = new EventEmitter();
 let WEB_PORT = 3000;
 let isShuttingDown = false; // Flag to prevent infinite shutdown loop
 
@@ -52,7 +46,6 @@ global.modelStateService = modelStateService;
 
 // Import and initialize OllamaService
 const ollamaService = require('./features/common/services/ollamaService');
-const ollamaModelRepository = require('./features/common/repositories/ollamaModel');
 
 // Native deep link handling - cross-platform compatible
 let pendingDeepLinkUrl = null;
@@ -219,6 +212,14 @@ async function initializeServices() {
         // Register settings handlers with featureBridge
         featureBridge.registerHandler('settings', 'update', async (data) => {
             console.log('[Lifecycle] Settings update handler called with:', Object.keys(data));
+            
+            // Apply screen invisibility setting if changed
+            if ('screenInvisibility' in data) {
+                const windowManager = require('./window/windowManager');
+                windowManager.setContentProtection(data.screenInvisibility);
+                console.log(`[Lifecycle] Screen invisibility set to: ${data.screenInvisibility}`);
+            }
+            
             return await settingsStoreService.saveSettings(data);
         });
         featureBridge.registerHandler('settings', 'get', async (key) => {
@@ -419,6 +420,18 @@ app.whenReady().then(async () => {
         // Create main windows
         await createWindows();
         console.log('[Lifecycle] ✅ Windows created');
+        
+        // Apply screen invisibility setting if it was saved
+        try {
+            const settings = await settingsStoreService.getSettings();
+            if (settings && settings.screenInvisibility) {
+                const windowManager = require('./window/windowManager');
+                windowManager.setContentProtection(true);
+                console.log('[Lifecycle] Applied saved screen invisibility setting: enabled');
+            }
+        } catch (error) {
+            console.error('[Lifecycle] Error applying screen invisibility setting:', error);
+        }
         
         // Connect and initialize bridges
         const { windowPool } = require('./window/windowManager.js');
@@ -628,6 +641,18 @@ app.on('activate', async () => {
     if (windows.length === 0) {
         console.log('[Lifecycle] No windows exist, recreating...');
         await createWindows();
+        
+        // Apply screen invisibility setting to newly created windows
+        try {
+            const settings = await settingsStoreService.getSettings();
+            if (settings && settings.screenInvisibility) {
+                const windowManager = require('./window/windowManager');
+                windowManager.setContentProtection(true);
+                console.log('[Lifecycle] Applied saved screen invisibility setting to recreated windows');
+            }
+        } catch (error) {
+            console.error('[Lifecycle] Error applying screen invisibility setting:', error);
+        }
     } else {
         // Focus existing windows
         const header = windows.find(w => w.getTitle().includes('Header'));

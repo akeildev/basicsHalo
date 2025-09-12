@@ -61,8 +61,8 @@ class CaptureWindow {
             
             checkController();
 
-            // Open dev tools for debugging (remove in production)
-            this.window.webContents.openDevTools({ mode: 'detach' });
+            // Dev tools disabled for production
+            // this.window.webContents.openDevTools({ mode: 'detach' });
         });
         
         // Log any console messages from the renderer

@@ -19,7 +19,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 10px;
+    padding: 0 10px 10px 10px; /* No top padding to eliminate gap */
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -91,6 +91,46 @@ body {
 .header-right {
     display: flex;
     align-items: center;
+    gap: 6px;
+}
+
+/* Mute button in control area */
+.mute-btn {
+    width: 50px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mute-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: scale(1.02);
+}
+
+.mute-btn.muted {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.mute-btn.muted:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.6);
+}
+
+.mute-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .clear-btn {
@@ -247,10 +287,16 @@ body {
     flex-shrink: 0;
 }
 
-.voice-btn {
+.button-group {
+    display: flex;
+    gap: 8px;
     width: 100%;
-    max-width: 200px;
-    padding: 12px 20px;
+    max-width: 280px;
+}
+
+.voice-btn {
+    flex: 1;
+    padding: 10px 14px;
     border: none;
     border-radius: 8px;
     background: rgba(74, 222, 128, 0.25);
@@ -259,9 +305,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     transition: all 0.2s ease;
     border: 1px solid rgba(74, 222, 128, 0.4);
+    font-size: 12px;
 }
 
 .voice-btn:hover:not(:disabled) {
