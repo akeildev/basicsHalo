@@ -5,6 +5,7 @@
 
   [![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://opensource.org/licenses/GPL-3.0)
   [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)](https://nodejs.org)
+  [![Python](https://img.shields.io/badge/python-%3E%3D3.9-blue.svg)](https://python.org)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/clueless/clueless)
 
   **An intelligent real-time AI desktop assistant with voice and screen capture capabilities**
@@ -14,14 +15,15 @@
 
 ## 🌟 Features
 
-- **🎙️ Voice Interaction**: Natural voice commands with real-time AI responses using Deepgram and LiveKit
-- **📸 Screen Capture**: Intelligent screen capture and analysis with contextual understanding
-- **🤖 Multiple AI Models**: Support for Anthropic Claude, Google Gemini, and OpenAI GPT models
+- **🎙️ Real-time Voice AI**: Natural conversations powered by OpenAI Realtime API with GPT-4o
+- **🗣️ High-Quality TTS**: ElevenLabs text-to-speech for natural voice responses
+- **🎧 Advanced Voice Detection**: Silero VAD for accurate voice activity detection
+- **📸 Screen Understanding**: AI-powered screen capture analysis with context awareness
+- **🔧 MCP Integration**: Model Context Protocol support for extensible tool capabilities
 - **💬 Real-time Chat**: Interactive chat interface with streaming responses
 - **🔒 Privacy-First**: Local processing with secure API key management
 - **🖥️ Cross-Platform**: Works on macOS, Windows, and Linux
-- **⚡ Real-time Processing**: Live audio transcription and immediate AI responses
-- **🎨 Modern UI**: Clean, intuitive interface built with Electron
+- **⚡ LiveKit Infrastructure**: Enterprise-grade WebRTC for low-latency voice communication
 
 ## 🚀 Getting Started
 
@@ -29,19 +31,23 @@
 
 Before installing Halo, ensure you have:
 
+#### Core Requirements
 - **Node.js** v18.0.0 or higher ([Download](https://nodejs.org/))
 - **npm** v8.0.0 or higher (comes with Node.js)
+- **Python** v3.9 or higher ([Download](https://python.org/))
 - **Git** ([Download](https://git-scm.com/))
-- **API Keys** for AI services you want to use:
-  - [Anthropic API Key](https://console.anthropic.com/) (for Claude)
-  - [Google AI API Key](https://makersuite.google.com/app/apikey) (for Gemini)
-  - [OpenAI API Key](https://platform.openai.com/) (for GPT)
-  - [Deepgram API Key](https://console.deepgram.com/) (for voice transcription)
+
+#### Required API Keys for Voice Features
+- **[OpenAI API Key](https://platform.openai.com/)** - Required for GPT-4o Realtime API (voice conversations)
+- **[ElevenLabs API Key](https://elevenlabs.io/)** - Required for high-quality text-to-speech
+- **[LiveKit Cloud](https://cloud.livekit.io/)** - Free tier available for WebRTC infrastructure
+
+#### Optional API Keys (for additional features)
+- [Anthropic API Key](https://console.anthropic.com/) - For Claude AI in chat mode
+- [Google AI API Key](https://makersuite.google.com/app/apikey) - For Gemini AI in chat mode
 
 ### 📦 Installation from GitHub
 
-#### Option 1: Quick Install (Recommended)
-
 ```bash
 # Clone the repository
 git clone https://github.com/clueless/clueless.git
@@ -49,24 +55,18 @@ git clone https://github.com/clueless/clueless.git
 # Navigate to the project directory
 cd clueless
 
-# Run the automated setup (installs dependencies and starts the app)
-npm run setup
-```
-
-#### Option 2: Manual Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/clueless/clueless.git
-
-# Navigate to the project directory
-cd clueless
-
-# Install dependencies
+# Install Node.js dependencies
 npm install
 
 # Build the renderer
 npm run build:renderer
+
+# Set up Python environment for voice agent
+cd src/agent
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cd ../..
 
 # Start the application
 npm start
@@ -84,25 +84,25 @@ cp .env.example .env
 2. **Edit the `.env` file** with your API keys:
 
 ```env
-# AI Model API Keys
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-GOOGLE_AI_API_KEY=your_google_ai_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
+# Required for Voice Agent
+OPENAI_API_KEY=your_openai_api_key_here           # GPT-4o Realtime API
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here   # Text-to-speech
 
-# Voice Services
-DEEPGRAM_API_KEY=your_deepgram_api_key_here
-LIVEKIT_API_KEY=your_livekit_api_key_here
-LIVEKIT_API_SECRET=your_livekit_api_secret_here
-LIVEKIT_URL=wss://your-livekit-server.com
+# LiveKit Configuration (get free account at https://cloud.livekit.io)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_livekit_api_key
+LIVEKIT_API_SECRET=your_livekit_api_secret
 
-# Optional: Firebase Configuration (for cloud sync)
-FIREBASE_API_KEY=your_firebase_api_key
-FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
-FIREBASE_PROJECT_ID=your_firebase_project_id
-FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
-FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
-FIREBASE_APP_ID=your_firebase_app_id
+# Optional for Chat Features
+ANTHROPIC_API_KEY=your_anthropic_api_key_here     # Claude AI
+GOOGLE_AI_API_KEY=your_google_ai_api_key_here     # Gemini AI
 ```
+
+**Important Notes:**
+- The voice agent uses OpenAI's GPT-4o Realtime API which handles both speech recognition and AI responses
+- ElevenLabs provides natural-sounding voice output
+- LiveKit Cloud free tier includes 10,000 monthly minutes
+- MCP (Model Context Protocol) support allows extensible tool integration
 
 3. **First Launch Setup**:
    - On first launch, Halo will request necessary system permissions
@@ -115,15 +115,25 @@ FIREBASE_APP_ID=your_firebase_app_id
 ### Starting the Application
 
 ```bash
-# Development mode with hot reload
+# Start the Electron app
 npm start
 
-# Build for production
-npm run build
-
-# Package for distribution
-npm run package
+# In a separate terminal, start the voice agent
+cd src/agent
+./start_agent.sh  # On Windows: python run_agent.py
 ```
+
+### How the Voice Agent Works
+
+The voice agent (`src/agent/voice_agent_with_mcp.py`) implements a real-time conversation system:
+
+1. **Audio Streaming**: LiveKit WebRTC handles bidirectional audio between the Electron app and Python agent
+2. **Speech Processing**: OpenAI's GPT-4o Realtime API converts speech to text and generates AI responses
+3. **Voice Output**: ElevenLabs TTS creates natural-sounding speech from the AI's text responses
+4. **Turn Detection**: Silero VAD intelligently detects when you start/stop speaking
+5. **Tool Execution**: MCP integration enables the AI to take screenshots, read files, and more
+
+The Python agent runs separately from the Electron app and communicates via LiveKit's infrastructure.
 
 ### Key Features & Shortcuts
 
@@ -260,6 +270,28 @@ We welcome contributions! Here's how to get started:
 
 ### Common Issues
 
+**Voice Agent Not Starting:**
+```bash
+# Check Python version (must be 3.9+)
+python3 --version
+
+# Reinstall voice agent dependencies
+cd src/agent
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Check API keys are set
+echo $OPENAI_API_KEY
+echo $ELEVENLABS_API_KEY
+```
+
+**LiveKit Connection Issues:**
+- Ensure LiveKit credentials in `.env` match your LiveKit Cloud project
+- Check firewall isn't blocking WebRTC connections (UDP ports 50000-60000)
+- Try using a different LiveKit server region if latency is high
+
 **Permission Denied on macOS:**
 - Go to System Settings → Privacy & Security
 - Grant Screen Recording and Microphone permissions to Halo
@@ -279,9 +311,9 @@ npm run build:all
 ```
 
 **API Key Issues:**
-- Ensure all required API keys are properly set in `.env`
-- Check that API keys have necessary permissions enabled
-- Verify API usage limits haven't been exceeded
+- OpenAI API key must have access to GPT-4o Realtime (check your OpenAI account)
+- ElevenLabs requires an active subscription for API access
+- LiveKit free tier provides 10,000 minutes/month
 
 ### Getting Help
 
@@ -297,11 +329,13 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 ## 🙏 Acknowledgments
 
 - [Electron](https://www.electronjs.org/) - Cross-platform desktop framework
-- [Anthropic](https://www.anthropic.com/) - Claude AI models
-- [Google AI](https://ai.google/) - Gemini models
-- [OpenAI](https://openai.com/) - GPT models
-- [Deepgram](https://deepgram.com/) - Voice transcription
-- [LiveKit](https://livekit.io/) - Real-time voice infrastructure
+- [OpenAI](https://openai.com/) - GPT-4o Realtime API for voice conversations
+- [ElevenLabs](https://elevenlabs.io/) - Natural text-to-speech voices
+- [LiveKit](https://livekit.io/) - WebRTC infrastructure for real-time voice
+- [Silero](https://github.com/snakers4/silero-vad) - Voice activity detection
+- [MCP](https://modelcontextprotocol.io/) - Model Context Protocol for tool integration
+- [Anthropic](https://www.anthropic.com/) - Claude AI models (chat mode)
+- [Google AI](https://ai.google/) - Gemini models (chat mode)
 
 ## 📊 System Requirements
 
